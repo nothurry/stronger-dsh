@@ -15,7 +15,7 @@ dsh plugin --profile desktop add <归档的绝对路径>
 也可直接安装当前预构建包：
 
 ```powershell
-dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.18.26/dsh-ui-stronger-0.18.26.tgz
+dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.18.27/dsh-ui-stronger-0.18.27.tgz
 ```
 
 安装后正常重启 DSH。依赖仍从 npm 解析，并非完全离线。已有本机设置保留。
@@ -282,3 +282,13 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 - 新几何图标采用对称六边形负空间与淡紫菱形核心，侧栏和启动加载画面统一。
 
 181项测试通过。隔离生产组件实际点击验证模式列表、空白会话切换和新会话选项。正式桌面重启后的完整点击回归仍待验证。
+
+
+## 0.18.27 页面风格统一
+
+- 为本插件的扩展页面、导入档案、用量统计及模式弹窗统一字体、标题、控件、操作区和提示排版。
+- 统一12px控件文字、6px小圆角、淡灰细边框、淡紫交互状态与页面留白；操作按钮去除重复装饰方括号，主导航保留自己的几何结构。
+- 模式选择改用共享样式类，移除独立内联排版，删除确认窗加入专属样式范围；保留开关、键盘焦点及原生选择行为。
+- 窄窗口统计卡片使用两列，表单与按钮自动换行；深色配色同步覆盖。
+
+181项回归通过。生产组件合成数据的54组页面检查覆盖17个扩展页面及导入、用量和模式弹窗，包含浅色、深色与420px，无横向溢出或页面警报。正式桌面与所有第三方插件页面尚未逐页验收。
