@@ -1,6 +1,6 @@
 {
   "name": "dsh-ui-stronger",
-  "version": "0.18.25",
+  "version": "0.18.26",
   "description": "DeepSeek Harness 界面、动效、技能、知识库、人设与执行前安全审查增强。",
   "type": "module",
   "main": "lib/index.js",
@@ -24,7 +24,8 @@
         "@deepseek-ai/dsh-client-ui-chat",
         "@deepseek-ai/dsh-client-ui-settings",
         "@deepseek-ai/dsh-client-ui-conversation",
-        "@deepseek-ai/dsh-client-ui-workspace"
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-client-ui-agent-preset"
       ]
     }
   },

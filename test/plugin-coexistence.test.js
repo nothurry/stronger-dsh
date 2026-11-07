@@ -11,7 +11,7 @@ import {wireModelCatalog} from '../lib/model-catalog.js';
 async function client(){
  const source=await readFile(new URL('../lib/client.js',import.meta.url),'utf8');
  const window={location:{protocol:'dsh-app:'},__ModuleLoader__:{load:b=>b.factory(id=>id==='react'?React:{})}};
- vm.runInNewContext(source.replace("return {name:'dsh-ui-stronger',inject:","window.qa={callControl,wirePresetEntry,wireModelSettingsProgress};return {name:'dsh-ui-stronger',inject:"),{window,AbortSignal,setTimeout,clearTimeout});
+ vm.runInNewContext(source.replace("return {name:'dsh-ui-stronger',inject:","window.qa={callControl,wirePresetEntry,wireModelSettingsProgress,selectPreset};return {name:'dsh-ui-stronger',inject:"),{window,AbortSignal,setTimeout,clearTimeout});
  return window.qa;
 }
 test('missing small policy read uses older authenticated view, while write errors are never retried',async()=>{
@@ -30,14 +30,14 @@ test('catalog extension arguments bypass shared cache and keep receiver and sync
  const a={plugin:'a'},b={plugin:'b'};
  assert.equal(service.modelCatalog(a),a);assert.equal(service.modelCatalog(b),b);cleanups.forEach(fn=>fn());
 });
-test('preset entry preserves native metadata, inject and label, and opens the host settings',async()=>{
+test('preset entry wins native slot priority and preserves injected hooks and label',async()=>{
  const {wirePresetEntry}=await client();let cleanup,component,meta,section;
  const native={options:{id:'agent-preset',order:-10,locale:'native',priority:30,inject:()=>({})},component:()=>null};
  const ctx={effect:fn=>cleanup=fn(),slots:{subscribe:()=>()=>{},entriesOfSlot:name=>name==='sidebar.settings'?[{store:{create:()=>({actions:{openSection:id=>section=id}})}}]:[native],register:(m,c)=>{meta=m;component=c;return()=>{};}}};
- wirePresetEntry(ctx);assert.equal(meta.inject,native.options.inject);assert.equal(meta.locale,'native');assert.equal(meta.priority,30);
+ wirePresetEntry(ctx);assert.equal(meta.inject,native.options.inject);assert.equal(meta.locale,'native');assert.equal(meta.priority,-100);
  // Exercise the produced button without mounting hooks into a second React runtime.
  const old=React.useState;React.useState=()=>['',()=>{}];
- try{const tree=component({sessionId:'one'});tree.props.children[0].props.onClick();assert.equal(section,'agent-presets');}finally{React.useState=old;cleanup();}
+ try{const tree=component({sessionId:'one'});assert.equal(tree.props.children[0].props['aria-label'],'切换智能体模式');assert.equal(typeof tree.props.children[0].props.onClick,'function');}finally{React.useState=old;cleanup();}
 });
 test('skill service replacement has independent registrations and old disposal leaves new registrations alive',async()=>{
  const data=await mkdtemp(path.join(tmpdir(),'skill-coexist-')),workspace=new Workspace(data),scopes=[];let install;
@@ -46,4 +46,16 @@ test('skill service replacement has independent registrations and old disposal l
  wireWorkspace(ctx,workspace);
  const make=()=>{const names=new Set(),cleanups=[];const scope={skills:{register:s=>{names.add(s.name);return()=>names.delete(s.name);}},effect:fn=>cleanups.push(fn())};scopes.push({names,cleanups});return scope;};
  try{install(make());install(make());assert(scopes[0].names.size>0);assert.equal(scopes[0].names.size,scopes[1].names.size);scopes[0].cleanups.forEach(fn=>fn());assert(scopes[1].names.size>0);}finally{scopes[1]?.cleanups.forEach(fn=>fn());await workspace.dispose();await rm(data,{recursive:true,force:true});}
+});
+
+
+test('mode picker delegates blank-session changes to the host and starts a new session only on that explicit path',async()=>{
+ const {selectPreset}=await client(),selected=[],started=[];
+ const remote={select:async(...args)=>{selected.push(args);return {ok:true,value:'standard'};}};
+ const ctx={get:()=>remote,uiWorkspace:{startSession:async(...args)=>started.push(args)}};
+ await selectPreset(ctx,'one','standard',false);assert.deepEqual(selected,[['one','standard']]);assert.equal(started.length,0);
+ await selectPreset(ctx,'one','ptc',true);assert.equal(selected.length,1);assert.equal(started.length,1);assert.equal(started[0][1].agentPreset,'ptc');
+ remote.select=async()=>({ok:false,error:{message:'This session has already started'}});
+ await assert.rejects(selectPreset(ctx,'one','ptc',false),/already started/);assert.equal(started.length,1,'a host refusal must not create another conversation silently');
+ await assert.rejects(selectPreset(ctx,'one','',true),/请选择/);
 });

@@ -15,7 +15,7 @@ dsh plugin --profile desktop add <归档的绝对路径>
 也可直接安装当前预构建包：
 
 ```powershell
-dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.18.25/dsh-ui-stronger-0.18.25.tgz
+dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.18.26/dsh-ui-stronger-0.18.26.tgz
 ```
 
 安装后正常重启 DSH。依赖仍从 npm 解析，并非完全离线。已有本机设置保留。
@@ -273,3 +273,12 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 - PTC状态标签可打开原生智能体预设设置。已开始的会话由DSH保留原模式，新会话开始前选择模式。
 
 180项回归通过。隔离生产组件点击测试验证开关保存及预设入口，未对正式用户会话执行开关写入，正式桌面重启后的完整点击回归仍未完成。
+
+
+## 0.18.26 模式选择与图标
+
+- 修正原生模式标签替换的插槽优先级，点击后直接展示宿主模式列表。
+- 空白会话通过原生服务切换模式；已有消息的会话明确选择以指定模式新建会话，使用DSH当前工作区。原生已开始会话限制与错误保持有效。
+- 新几何图标采用对称六边形负空间与淡紫菱形核心，侧栏和启动加载画面统一。
+
+181项测试通过。隔离生产组件实际点击验证模式列表、空白会话切换和新会话选项。正式桌面重启后的完整点击回归仍待验证。
