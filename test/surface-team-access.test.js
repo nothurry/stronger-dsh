@@ -19,7 +19,7 @@ test('small collaboration status is read-only, per-session and does not expose r
   const first=bots.policyStatus('one');assert(first.editable);assert(first.available);assert.equal(first.policy.enabled,false);
   assert.equal(JSON.stringify(bots.state),before);
   assert(!bots.policyStatus('child').editable);assert(!bots.policyStatus('missing').editable);
-  assert.deepEqual(Object.keys(first).sort(),['available','editable','policy','reason','revision','sessionId']);
+  assert.deepEqual(Object.keys(first).sort(),['available','editable','policy','reason','revision','sessionId','teamMode']);
   assert(JSON.stringify(first).length<400);
   await bots.configurePolicy({sessionId:'one',revision:first.revision,...first.policy,enabled:true});
   assert(bots.policyStatus('one').policy.enabled);assert(!bots.policyStatus('two').policy.enabled);
@@ -59,7 +59,7 @@ test('native new-chat content is centered within symmetric rails and collapsed i
  assert.match(styles,/\.wtg9ga_collapsed \.wtg9ga_newSession svg\{display:block/);
  assert.match(styles,/\.zs-file-picker>input\[type=file\][^}]*min-height:0!important/);
  assert.match(styles,/prefers-reduced-motion:reduce/);
- assert(source.includes('+ANGULAR_CSS+TERMINAL_CSS+SURFACE_CSS;'));
+ assert(source.includes('+ANGULAR_CSS+TERMINAL_CSS+SURFACE_CSS+TEAM_CSS;'));
  assert.doesNotMatch(source,/font:(?:\d{3} )?\d+px(?:\/[\d.]+(?:px)?)? inherit/);
  assert.match(styles,/::-webkit-slider-runnable-track\{height:3px/);
 });
