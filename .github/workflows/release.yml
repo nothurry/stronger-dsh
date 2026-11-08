@@ -1,4 +1,4 @@
-# Release 0.18.32: retain native subscriptions on adapter unload.
+# Release 0.18.33: corrected UTF-8 documentation, same tested runtime.
 name: Publish audited release
 on:
   workflow_dispatch:
