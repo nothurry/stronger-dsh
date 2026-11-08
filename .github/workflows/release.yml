@@ -1,4 +1,4 @@
-# Release 0.18.30: workspace save and independent stop.
+# Release 0.18.31: native slots, archive source and parallel limit.
 name: Publish audited release
 on:
   workflow_dispatch:
@@ -31,4 +31,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           version=$(node -p 'JSON.parse(require("fs").readFileSync("package.json")).version')
-          gh release create "v$version" "dist/dsh-ui-stronger-$version.tgz" "dist/dsh-ui-stronger-$version.sha256" --target "$GITHUB_SHA" --title "Stronger DSH $version" --notes "Selective WeChat memory sharing, explicit settings save, and stop remains available when unsaved workspace edits are invalid. Public source contains no private character, voice model, audio or user data. See README for discovery source and safety limitations."
+          gh release create "v$version" "dist/dsh-ui-stronger-$version.tgz" "dist/dsh-ui-stronger-$version.sha256" --target "$GITHUB_SHA" --title "Stronger DSH $version" --notes "Native mode entry metadata, live flat archives, workspace registration management, fluid chat width and per-session parallel limits. Public source contains no private character, voice model, audio or user data. See README for discovery source and safety limitations."

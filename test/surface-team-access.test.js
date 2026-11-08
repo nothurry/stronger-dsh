@@ -33,7 +33,7 @@ test('small collaboration status is read-only, per-session and does not expose r
 
 test('three file entry points share one accessible picker without native nested upload chrome',async()=>{
  const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.qa={LocalFilePicker,TeamAccess};return {name:'dsh-ui-stronger',inject:");
- const win={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?React:{})}};
+ const win={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?React:{Menu:({anchor})=>anchor})}};
  vm.runInNewContext(source,{window:win,setTimeout,clearTimeout});
  const html=renderToStaticMarkup(React.createElement(React.Fragment,null,...['背景','对话','工作台'].map(label=>React.createElement(win.qa.LocalFilePicker,{key:label,label,hint:'本机文件',disabled:label==='背景',accept:'.json',onChange(){}}))));
  assert.equal((html.match(/type="file"/g)||[]).length,3);
@@ -45,6 +45,7 @@ test('three file entry points share one accessible picker without native nested 
  const team=renderToStaticMarkup(React.createElement(win.qa.TeamAccess,{store:{},control:async()=>({}),sessionId:'one'}));
  assert.equal((team.match(/role="switch"/g)||[]).length,1);
  assert.match(team,/aria-label="允许本会话调用子智能体"/);
+ assert.match(team,/aria-label="子智能体并行数量上限"/);
  assert.doesNotMatch(source,/aria-label':'允许当前会话自主协作'/,'advanced panel does not duplicate the header switch');
  assert.match(source,/readVersion\.current===version/,'late status reads cannot overwrite a successful toggle');
 });

@@ -15,7 +15,7 @@ dsh plugin --profile desktop add <归档的绝对路径>
 也可直接安装当前预构建包：
 
 ```powershell
-dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.18.30/dsh-ui-stronger-0.18.30.tgz
+dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.18.31/dsh-ui-stronger-0.18.31.tgz
 ```
 
 安装后正常重启 DSH。依赖仍从 npm 解析，并非完全离线。已有本机设置保留。
@@ -326,3 +326,14 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 187项回归通过。生产设置组件使用合成数据验证了工作区和记忆选择保存、默认工作区调整、未保存选择撤销、空工作区草稿下停用和浅色/深色420px排版。真实微信网络收发尚未实测。
 
 旧记忆缺少会话来源时，只在全部共享模式使用。已经进入旧对话的文字仍保留。历史检索需另行开启，新增记忆按需或随新会话、压缩、刷新载入。
+
+
+## 0.18.31 会话列表、模式入口与协作上限
+
+- 修复模式入口替换丢失原生注入信息的问题，保留 DSH 模式服务和锚定菜单。
+- 归档删除在原生列表数据层生效，剩余会话计数同步更新；已归档采用平铺显示，离开后恢复原有分组。
+- 会话顶部子智能体开关旁可直接设置 1–4 个插件协作并行上限，复用会话预算与调度器。
+- 工作区支持改名和删除注册；删除不移除磁盘文件或会话日志，微信目录授权单独管理。
+- 聊天与输入区适应可用列宽，保留手动宽度设置；侧栏与启动图标改为分面晶体，清理废弃启动覆盖层样式。
+
+191 项自动回归通过。使用 DSH 原生 SlotCore、Menu、Modal 与实际插件组件隔离验证模式菜单、并行上限、归档删除刷新、工作区改名/移除，并检查 420/900/1920 像素布局。正式桌面重启后的端到端交互仍需复验。

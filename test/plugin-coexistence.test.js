@@ -32,9 +32,9 @@ test('catalog extension arguments bypass shared cache and keep receiver and sync
 });
 test('preset entry wins native slot priority and preserves injected hooks and label',async()=>{
  const {wirePresetEntry}=await client();let cleanup,component,meta,section;
- const native={options:{id:'agent-preset',order:-10,locale:'native',priority:30,inject:()=>({})},component:()=>null};
+ const native={options:{id:'agent-preset',order:-10,priority:30},locale:'native',inject:()=>({}),component:()=>null};
  const ctx={effect:fn=>cleanup=fn(),slots:{subscribe:()=>()=>{},entriesOfSlot:name=>name==='sidebar.settings'?[{store:{create:()=>({actions:{openSection:id=>section=id}})}}]:[native],register:(m,c)=>{meta=m;component=c;return()=>{};}}};
- wirePresetEntry(ctx);assert.equal(meta.inject,native.options.inject);assert.equal(meta.locale,'native');assert.equal(meta.priority,-100);
+ wirePresetEntry(ctx);assert.equal(meta.inject,native.inject);assert.equal(meta.locale,'native');assert.equal(meta.priority,-100);
  // Exercise the produced button without mounting hooks into a second React runtime.
  const old=React.useState;React.useState=()=>['',()=>{}];
  try{const tree=component({sessionId:'one'});assert.equal(tree.type.name,'PresetPicker');assert.equal(tree.props.sessionId,'one');assert.equal(tree.props.blank,false);}finally{React.useState=old;cleanup();}
