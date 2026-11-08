@@ -1,4 +1,4 @@
-# Release 0.18.31: native slots, archive source and parallel limit.
+# Release 0.18.32: retain native subscriptions on adapter unload.
 name: Publish audited release
 on:
   workflow_dispatch:

@@ -17,12 +17,13 @@ test('deleted archive sessions leave the native source before pagination; notifi
  const original=source.getSnapshot,subscribe=source.subscribe;
  const store={snapshot:()=>({deletedSessions:deleted}),subscribe:fn=>{pluginListeners.add(fn);return()=>pluginListeners.delete(fn);}};
  wireSessionVisibility({inject:(_,fn)=>fn({get:()=>({list:source}),effect:fn=>dispose=fn()})},store);
- source.subscribe(()=>notified++);assert.equal(source.getSnapshot(),raw);
+ const unsubscribe=source.subscribe(()=>notified++);assert.equal(source.getSnapshot(),raw);
  deleted=['b','e'];for(const fn of pluginListeners)fn();assert.equal(notified,1);
  const snapshot=source.getSnapshot();assert.equal(snapshot.ids.length,4);assert.deepEqual(Array.from(snapshot.ids),['a','c','d','f']);assert(!snapshot.byId.b);assert.equal(raw.ids.length,6);assert.equal(snapshot,source.getSnapshot());
  for(const fn of pluginListeners)fn();assert.equal(notified,1);
  const wrapped=source.getSnapshot,wrappedSubscribe=source.subscribe;source.getSnapshot=function(){return wrapped.call(this);};source.subscribe=function(...a){return wrappedSubscribe.apply(this,a);};
- dispose();assert.equal(pluginListeners.size,0);assert.equal(nativeListeners.size,0);assert.equal(source.getSnapshot(),raw);
+ dispose();assert.equal(pluginListeners.size,0);assert.equal(nativeListeners.size,1);assert.equal(source.getSnapshot(),raw);
+ for(const fn of nativeListeners)fn();assert.equal(notified,2,'unloading the plugin retains the host subscriber');unsubscribe();assert.equal(nativeListeners.size,0);
  const off=source.subscribe(()=>{});assert.equal(pluginListeners.size,0);off();assert.notEqual(source.getSnapshot,original);assert.notEqual(source.subscribe,subscribe);
 });
 test('archive flat mode uses the actual cached host view and restores the saved grouping outside archives',async()=>{
