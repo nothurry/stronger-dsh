@@ -15,7 +15,7 @@ dsh plugin --profile desktop add <归档的绝对路径>
 也可直接安装当前预构建包：
 
 ```powershell
-dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.18.29/dsh-ui-stronger-0.18.29.tgz
+dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.18.30/dsh-ui-stronger-0.18.30.tgz
 ```
 
 安装后正常重启 DSH。依赖仍从 npm 解析，并非完全离线。已有本机设置保留。
@@ -314,3 +314,15 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 187项回归通过。使用实际设置组件和合成数据验证保存、默认工作区切换、共享关闭及浅色/深色420px排版。正式微信网络收发尚未实测。
 
 旧配置的“全部共享”保持原有含义。旧记忆缺少会话来源时，只在全部共享模式使用。已进入旧对话的文字仍保留，历史检索需另行开启。新增共享资料在新会话、压缩、刷新快照或按需召回时读取。
+
+
+## 0.18.30 微信保存与停用收尾修复
+
+- 微信设置提供独立“保存设置”，保存工作区和记忆选择并保持当前启停状态，成功后显示确认。
+- 修复未保存表单没有有效工作区时无法停用的问题，停用使用已保存配置并显示“微信已停用”。
+- 包含指定桌面对话的双向记忆共享、子智能体来源继承和撤权检查，可在微信使用 /memory 管理范围。
+- 设置控件沿用统一字体、细边框、小圆角和淡紫交互状态。
+
+187项回归通过。生产设置组件使用合成数据验证了工作区和记忆选择保存、默认工作区调整、未保存选择撤销、空工作区草稿下停用和浅色/深色420px排版。真实微信网络收发尚未实测。
+
+旧记忆缺少会话来源时，只在全部共享模式使用。已经进入旧对话的文字仍保留。历史检索需另行开启，新增记忆按需或随新会话、压缩、刷新载入。
