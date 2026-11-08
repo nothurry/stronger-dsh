@@ -37,7 +37,7 @@ test('preset entry wins native slot priority and preserves injected hooks and la
  wirePresetEntry(ctx);assert.equal(meta.inject,native.options.inject);assert.equal(meta.locale,'native');assert.equal(meta.priority,-100);
  // Exercise the produced button without mounting hooks into a second React runtime.
  const old=React.useState;React.useState=()=>['',()=>{}];
- try{const tree=component({sessionId:'one'});assert.equal(tree.props.children[0].props['aria-label'],'切换智能体模式');assert.equal(typeof tree.props.children[0].props.onClick,'function');}finally{React.useState=old;cleanup();}
+ try{const tree=component({sessionId:'one'});assert.equal(tree.type.name,'PresetPicker');assert.equal(tree.props.sessionId,'one');assert.equal(tree.props.blank,false);}finally{React.useState=old;cleanup();}
 });
 test('skill service replacement has independent registrations and old disposal leaves new registrations alive',async()=>{
  const data=await mkdtemp(path.join(tmpdir(),'skill-coexist-')),workspace=new Workspace(data),scopes=[];let install;

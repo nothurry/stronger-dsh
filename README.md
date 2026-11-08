@@ -15,7 +15,7 @@ dsh plugin --profile desktop add <归档的绝对路径>
 也可直接安装当前预构建包：
 
 ```powershell
-dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.18.27/dsh-ui-stronger-0.18.27.tgz
+dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.18.28/dsh-ui-stronger-0.18.28.tgz
 ```
 
 安装后正常重启 DSH。依赖仍从 npm 解析，并非完全离线。已有本机设置保留。
@@ -292,3 +292,13 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 - 窄窗口统计卡片使用两列，表单与按钮自动换行；深色配色同步覆盖。
 
 181项回归通过。生产组件合成数据的54组页面检查覆盖17个扩展页面及导入、用量和模式弹窗，包含浅色、深色与420px，无横向溢出或页面警报。正式桌面与所有第三方插件页面尚未逐页验收。
+
+
+## 0.18.28 紧凑模式菜单
+
+- 模式选择使用 DSH 原生锚定菜单，统一字体、细边框、小圆角和淡紫交互色。
+- 每行展示模式与简短说明，已有会话的选项标明“新会话”，空白会话通过宿主直接选择。
+- 菜单支持单击、方向键、回车、Escape 与点击外部关闭，保留读取超时、重复提交保护及错误反馈。
+- 浅色与深色菜单采用纯色背景，窄窗口自动调整位置。
+
+181项回归通过。使用已安装 DSH 的原生菜单组件及合成远端数据验证交互和深色420px布局，正式桌面窗口尚未复验。
