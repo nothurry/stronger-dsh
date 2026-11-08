@@ -1,4 +1,4 @@
-# Release 0.18.33: corrected UTF-8 documentation, same tested runtime.
+# Release 0.18.34: current-session modes, folders, cache/context and reviewer controls.
 name: Publish audited release
 on:
   workflow_dispatch:
@@ -31,4 +31,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           version=$(node -p 'JSON.parse(require("fs").readFileSync("package.json")).version')
-          gh release create "v$version" "dist/dsh-ui-stronger-$version.tgz" "dist/dsh-ui-stronger-$version.sha256" --target "$GITHUB_SHA" --title "Stronger DSH $version" --notes "Native mode entry metadata, live flat archives, workspace registration management, fluid chat width and per-session parallel limits. Public source contains no private character, voice model, audio or user data. See README for discovery source and safety limitations."
+          gh release create "v$version" "dist/dsh-ui-stronger-$version.tgz" "dist/dsh-ui-stronger-$version.sha256" --target "$GITHUB_SHA" --title "Stronger DSH $version" --notes "Current-session mode changes at the next model request, loose-folder management, precise cache display, native context projections and configurable safety reviewer. Public source contains no private character, voice model, audio or user data. See README for discovery source and safety limitations."

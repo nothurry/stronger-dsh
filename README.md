@@ -15,7 +15,7 @@ dsh plugin --profile desktop add <归档的绝对路径>
 也可直接安装当前预构建包：
 
 ```powershell
-dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.18.33/dsh-ui-stronger-0.18.33.tgz
+dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.18.34/dsh-ui-stronger-0.18.34.tgz
 ```
 
 安装后正常重启 DSH。依赖仍从 npm 解析，并非完全离线。已有本机设置保留。
@@ -349,3 +349,14 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 191 项自动回归通过。使用 DSH 原生 SlotCore、Menu、Modal 与实际插件组件隔离验证模式菜单、并行上限、归档删除刷新、工作区改名/移除，并检查 420/900/1920 像素布局。正式桌面重启后的端到端交互仍需复验。
 
 包含卸载兼容性收尾：只移除插件附加订阅，宿主订阅继续工作。0.18.33 另修正生成发行说明时的中文编码问题，功能与 0.18.32 一致。
+
+## 0.18.34 当前会话与分组管理修复
+
+- 补齐“未分组”的改名、删除分组和恢复入口。删除分组后保留对话并直接显示，注册工作区继续使用原生改名/移除能力。
+- 模式选择保留当前会话，在下一次模型请求前加载所选模式；按钮显示待生效状态，失败时停止请求并保留选择。
+- 缓存明细改为“命中缓存”在“未命中缓存”上方，命中比例精确到小数点后一位。
+- 上下文浏览器与会话面板读取相同原生占用投影，并在可见时定期刷新。组成仍标注为估算。
+- 删除会话弹窗统一间距与按钮，移除右上角空白关闭按钮，保留 Escape 关闭和重复提交防护。
+- 安全页可独立设置审查模型与模型支持的思考强度。设置变化使旧审批失效，失败继续阻止执行。
+
+204 项自动回归通过。使用 DSH 实际原生 Menu、Modal、ProjectRowItem、UsagePill 和插件生产组件，通过合成数据验证菜单单击、分组持久化、缓存排列、审查设置保存及删除弹窗。正式桌面鼠标端到端验收尚未完成。

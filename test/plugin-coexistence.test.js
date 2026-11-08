@@ -37,7 +37,7 @@ test('preset entry wins native slot priority and preserves injected hooks and la
  wirePresetEntry(ctx);assert.equal(meta.inject,native.inject);assert.equal(meta.locale,'native');assert.equal(meta.priority,-100);
  // Exercise the produced button without mounting hooks into a second React runtime.
  const old=React.useState;React.useState=()=>['',()=>{}];
- try{const tree=component({sessionId:'one'});assert.equal(tree.type.name,'PresetPicker');assert.equal(tree.props.sessionId,'one');assert.equal(tree.props.blank,false);}finally{React.useState=old;cleanup();}
+ try{const tree=component({sessionId:'one'});assert.equal(tree.type.name,'PresetPicker');assert.equal(tree.props.sessionId,'one');assert.equal(tree.props.blank,undefined);}finally{React.useState=old;cleanup();}
 });
 test('skill service replacement has independent registrations and old disposal leaves new registrations alive',async()=>{
  const data=await mkdtemp(path.join(tmpdir(),'skill-coexist-')),workspace=new Workspace(data),scopes=[];let install;
@@ -49,13 +49,11 @@ test('skill service replacement has independent registrations and old disposal l
 });
 
 
-test('mode picker delegates blank-session changes to the host and starts a new session only on that explicit path',async()=>{
+test('mode picker saves intent for the current session and never creates another conversation',async()=>{
  const {selectPreset}=await client(),selected=[],started=[];
- const remote={select:async(...args)=>{selected.push(args);return {ok:true,value:'standard'};}};
- const ctx={get:()=>remote,uiWorkspace:{startSession:async(...args)=>started.push(args)}};
- await selectPreset(ctx,'one','standard',false);assert.deepEqual(selected,[['one','standard']]);assert.equal(started.length,0);
- await selectPreset(ctx,'one','ptc',true);assert.equal(selected.length,1);assert.equal(started.length,1);assert.equal(started[0][1].agentPreset,'ptc');
- remote.select=async()=>({ok:false,error:{message:'This session has already started'}});
- await assert.rejects(selectPreset(ctx,'one','ptc',false),/already started/);assert.equal(started.length,1,'a host refusal must not create another conversation silently');
- await assert.rejects(selectPreset(ctx,'one','',true),/请选择/);
+ const ctx={connection:{rpc:{call:async(channel,method,payload)=>{selected.push([channel,method,payload]);return {ok:true,value:{sessionId:'one',requested:payload.presetId,current:'standard',pending:true}};}}},uiWorkspace:{startSession:async(...args)=>started.push(args)}};
+ const result=await selectPreset(ctx,'one','ptc');assert.equal(result.requested,'ptc');assert.deepEqual(JSON.parse(JSON.stringify(selected)),[['/api','ui-stronger/selectSessionPreset',{sessionId:'one',presetId:'ptc'}]]);assert.equal(started.length,0);
+ ctx.connection.rpc.call=async()=>({ok:false,error:{message:'mode unavailable'}});
+ await assert.rejects(selectPreset(ctx,'one','ptc'),/mode unavailable/);assert.equal(started.length,0);
+ await assert.rejects(selectPreset(ctx,'one',''),/请选择/);
 });

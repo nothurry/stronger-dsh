@@ -44,3 +44,21 @@ test('guard is fail closed, monotonic, reviews exact arguments and rejects mutat
 test('an allow stamp expires on later human revocation or workspace change',()=>temporary(async root=>{
  const w=new Workspace(root);await w.load();let guard;const h=harness({tools:{guard(fn){guard=fn;return ()=>{};}},workingDirectory:{ensure:async()=>'/project'},llm:{stream(){return response({decision:'allow',risk:'low',reason:'bounded task'});}}});wireGuard(h.ctx,w);const gate=h.events.get('tools/pre-execute');const exec={agent:{session:sessionFixture()},name:'shell',arguments:{cmd:'npm test'},callId:'call',rootCallId:'call',signal:new AbortController().signal};assert.equal((await gate(exec,async()=>({kind:'allow'}))).kind,'allow');assert.equal(guard(exec),undefined);exec.agent.session.snapshotEvents().push({seq:20,type:'user/message',data:{source:{kind:'user',rpcId:'new'},content:[{type:'text',text:'Stop now.'}]}});exec.agent.session.surface.nodes.push(20);assert.match(guard(exec),/缺少有效/);exec.agent.session.header.cwd='/other';assert.match(guard(exec),/缺少有效/);await h.dispose();
 }));
+
+test('reviewer model and effort reach the actual request and changing settings invalidates approval',()=>temporary(async root=>{
+ const w=new Workspace(root);await w.load();let guard,options,route={provider:'reviewer',model:'guard',reasoningEffort:'high'};
+ w.reviewRoute=()=>({...route});
+ const h=harness({tools:{guard(fn){guard=fn;return()=>{};}},workingDirectory:{ensure:async()=>'/project'},llm:{resolveModelInfo:async()=>({reasoning:{efforts:[{id:'high'}]}}),stream(o){options=o;return response({decision:'allow',risk:'low',reason:'bounded tests'});}}});
+ wireGuard(h.ctx,w);const gate=h.events.get('tools/pre-execute'),exec={agent:{session:sessionFixture()},name:'shell',arguments:{cmd:'npm test'},callId:'call',rootCallId:'call',signal:new AbortController().signal};
+ assert.equal((await gate(exec,async()=>({kind:'allow'}))).kind,'allow');assert.equal(options.provider,'reviewer');assert.equal(options.model,'guard');assert.equal(options.reasoningEffort,'high');assert.equal(guard(exec),undefined);
+ assert.deepEqual(w.lastReview.reviewer,{provider:'reviewer',model:'guard',effort:'high'});
+ route={...route,model:'replacement'};assert.match(guard(exec),/缺少有效/);
+ route={...route,reasoningEffort:'unsupported'};assert.equal((await gate(exec,async()=>({kind:'allow'}))).kind,'deny');assert.match(w.lastReview.reason,/不支持/);await h.dispose();
+}));
+
+test('a reviewer route change during streaming denies execution even after a valid allow response',()=>temporary(async root=>{
+ const w=new Workspace(root);await w.load();let model='first';w.reviewRoute=()=>({provider:'p',model});
+ const h=harness({tools:{guard(){return()=>{};}},workingDirectory:{ensure:async()=>'/project'},llm:{stream(){return(async function*(){model='changed';yield*response({decision:'allow',risk:'low',reason:'bounded tests'});})();}}});
+ wireGuard(h.ctx,w);const exec={agent:{session:sessionFixture()},name:'shell',arguments:{cmd:'npm test'},callId:'call',rootCallId:'call',signal:new AbortController().signal};
+ const result=await h.events.get('tools/pre-execute')(exec,async()=>({kind:'allow'}));assert.equal(result.kind,'deny');assert.match(result.reason,/设置已改变/);await h.dispose();
+}));
