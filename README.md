@@ -15,7 +15,7 @@ dsh plugin --profile desktop add <归档的绝对路径>
 也可直接安装当前预构建包：
 
 ```powershell
-dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.18.34/dsh-ui-stronger-0.18.34.tgz
+dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.18.35/dsh-ui-stronger-0.18.35.tgz
 ```
 
 安装后正常重启 DSH。依赖仍从 npm 解析，并非完全离线。已有本机设置保留。
@@ -360,3 +360,11 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 - 安全页可独立设置审查模型与模型支持的思考强度。设置变化使旧审批失效，失败继续阻止执行。
 
 204 项自动回归通过。使用 DSH 实际原生 Menu、Modal、ProjectRowItem、UsagePill 和插件生产组件，通过合成数据验证菜单单击、分组持久化、缓存排列、审查设置保存及删除弹窗。正式桌面鼠标端到端验收尚未完成。
+
+## 0.18.35 重启后会话恢复兼容
+
+- 修复重启后浏览旧对话时，子智能体开关与并行上限被误判禁用的问题。设置读取可使用 DSH 原生持久化会话观察，完整释放观察租约。
+- 已保存但尚未创建活跃智能体的主会话也可以保存模式选择，待该会话下一次模型请求时应用；原会话标识与日志继续使用。
+- 保存前重新核对会话来源，拒绝子会话、不匹配身份、损坏记录和已取消操作。读取设置复用原生会话缓存，不启动模型或子智能体。
+
+208 项自动回归通过。重启后的正式窗口已不再显示原先的 HTTP 405；窗口截图和鼠标坐标控制仍不可用，正式桌面点击端到端尚未验证。安装后需正常重启 DSH 加载新的后端代码。

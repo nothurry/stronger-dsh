@@ -5,8 +5,9 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
 import React from 'react';
-import {Workbench,wireWorkbench,validateSessionPresets} from '../lib/workbench.js';
+import {Workbench,wireWorkbench,validateSessionPresets,inspectSession} from '../lib/workbench.js';
 import {Intelligence,reviewConfig} from '../lib/intelligence.js';
+import {Bots} from '../lib/bots.js';
 
 async function temporary(run){
  const dir=await mkdtemp(path.join(tmpdir(),'session-controls-'));
@@ -95,3 +96,41 @@ test('cache adapter cleanup restores only its own nodes and leaves foreign adapt
  qa.CacheReading({root:{current:{querySelector:()=>true}},usage:{uncachedInputTokens:3,cacheReadTokens:96,cacheWriteTokens:1},t:key=>key==='message.turnUsage.cacheHit'?'ratio':key});
  assert.equal(value.textContent,'96.0%');assert.equal(hit.getAttribute('data-zs-cache-row'),'hit');cleanup();assert.equal(value.textContent,'97%');assert.equal(hit.getAttribute('data-zs-cache-row'),null);assert.equal(foreign.getAttribute('data-zs-cache-row'),'other');
 });
+
+test('persisted conversations can configure modes and collaboration before their agents are materialized',()=>temporary(async dir=>{
+ const agents=new Map(),sessions=new Map(),headers=new Map([['one',{id:'one',cwd:'/project',agentPreset:'standard'}],['child',{id:'child',origin:'subagent',parentSession:'one'}]]);
+ let releases=0,compositions=0,durable='ptc',actual='ptc';
+ const registry={resolve:async id=>({id}),composedPreset:()=>actual,presetForSession:()=>durable,recompose:async(_scope,id)=>{compositions++;actual=id;}};
+ const query={observeSession:async(id,{signal})=>{signal?.throwIfAborted();if(!headers.has(id))throw Object.assign(Error('not found'),{code:'SESSION_QUERY_SESSION_NOT_FOUND'});return {header:headers.get(id),projections:{values:{agentPreset:'ptc'}},get events(){throw Error('settings must not read the full event log');},[Symbol.dispose](){releases++;}};}};
+ const ctx={get:key=>({agents,sessions,agentPresets:registry,sessionQuery:query,subagents:{startActivation(){throw Error('settings must not dispatch');}}}[key])};
+ const w=new Workbench(dir,ctx),bots=new Bots(dir,ctx);await w.load();await bots.load();
+ assert.equal((await w.readPresetStatus('one')).current,'ptc');assert.equal((await w.selectPreset('one','minimal')).pending,true);assert.equal(compositions,0);assert.equal(agents.size,0);assert.equal(sessions.size,0);
+ const policy=bots.policyStatus('one',await inspectSession(ctx,'one'));assert(policy.editable);assert(policy.available);
+ await bots.configurePolicy({sessionId:'one',revision:policy.revision,...policy.policy,enabled:true,maxParallel:3});assert.equal(bots.policy('one').maxParallel,3);
+ await assert.rejects(w.selectPreset('child','standard'),/主会话/);await assert.rejects(bots.configurePolicy({sessionId:'child',revision:bots.state.revision,...policy.policy}),/主会话/);
+ await assert.rejects(w.readPresetStatus('missing'),/实际会话/);assert(!bots.policyStatus('missing',await inspectSession(ctx,'missing')).editable);
+ const events=[],session={id:'one',header:headers.get('one'),append(type,data){events.push({type,data});durable=data.agentPreset;}},agent={session,ctx:{}};sessions.set('one',session);agents.set('one',agent);
+ await w.applyPreset(agent);assert.equal(actual,'minimal');assert.equal(compositions,1);assert.equal(events[0].data.agentPreset,'minimal');assert(releases>=6);
+ await w.dispose();await bots.close();
+}));
+
+test('cold observation identity and corrupt reads fail closed and always release the native lease',()=>temporary(async dir=>{
+ let releases=0,corrupt=false;
+ const ctx={get:key=>key==='agentPresets'?{resolve:async id=>({id}),recompose(){}}:key==='sessionQuery'?{observeSession:async()=>{if(corrupt)throw Error('corrupt persisted session');return {header:{id:'another'},[Symbol.dispose](){releases++;}};}}:null};
+ const w=new Workbench(dir,ctx),bots=new Bots(dir,ctx);await w.load();await bots.load();
+ await assert.rejects(w.selectPreset('one','ptc'),/来源不一致/);assert.equal(releases,1);assert.deepEqual(w.config.sessionPresets,{});
+ await assert.rejects(bots.configurePolicy({sessionId:'one',revision:0,enabled:true,maxParallel:2,maxTasks:8}),/来源不一致/);assert.equal(releases,2);assert.equal(bots.state.revision,0);
+ corrupt=true;await assert.rejects(w.readPresetStatus('one'),/corrupt/);await assert.rejects(w.selectPreset('one','ptc'),/corrupt/);assert.deepEqual(w.config.sessionPresets,{});
+ await w.dispose();await bots.close();
+}));
+
+test('cancellation after a cold observation releases its lease and prevents preference writes',()=>temporary(async dir=>{
+ const controller=new AbortController();let releases=0;
+ const ctx={get:key=>key==='agentPresets'?{resolve:async id=>({id}),recompose(){}}:key==='sessionQuery'?{observeSession:async()=>{controller.abort(Error('read cancelled'));return {header:{id:'one'},[Symbol.dispose](){releases++;}};}}:null};
+ const w=new Workbench(dir,ctx);await w.load();await assert.rejects(w.selectPreset('one','ptc',controller.signal),/read cancelled/);assert.equal(releases,1);assert.deepEqual(w.config.sessionPresets,{});await w.dispose();
+}));
+
+test('a changed live header during preset validation cannot write a stale choice',()=>temporary(async dir=>{
+ const f=modes(),w=new Workbench(dir,f.ctx);await w.load();f.registry.resolve=async id=>{f.session.header.origin='subagent';return {id};};
+ await assert.rejects(w.selectPreset('one','ptc'),/会话已切换/);assert.deepEqual(w.config.sessionPresets,{});await w.dispose();
+}));
