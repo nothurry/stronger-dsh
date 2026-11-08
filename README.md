@@ -15,7 +15,7 @@ dsh plugin --profile desktop add <归档的绝对路径>
 也可直接安装当前预构建包：
 
 ```powershell
-dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.1/dsh-ui-stronger-0.19.1.tgz
+dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.2/dsh-ui-stronger-0.19.2.tgz
 ```
 
 安装后正常重启 DSH。依赖仍从 npm 解析，并非完全离线。已有本机设置保留。
@@ -369,7 +369,7 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 
 208 项自动回归通过。重启后的正式窗口已不再显示原先的 HTTP 405；窗口截图和鼠标坐标控制仍不可用，正式桌面点击端到端尚未验证。安装后需正常重启 DSH 加载新的后端代码。
 
-## 0.19.1 团队工作区与启动恢复
+## 0.19.2 团队工作区与启动恢复
 
 - 新增当前会话的团队模式。主协调员位于上方、成员卡片在下方，展示身份职责、实际模型、阶段汇报、阻碍与协作消息，详细依据可展开查看。
 - 可分别设置主模型、全体子成员默认模型与思考强度，并按成员覆盖。主模型可配置子成员身份与任务，工具层限制主模型只做调度、跟进与汇总。模型与强度在下次请求时生效，身份职责用于新派发任务。
@@ -377,4 +377,4 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 - 修复启动模式状态读取时机与失败后不再读取的问题，等待连接就绪、只读状态有界重试、重连后重新读取。打开模式菜单也会真实刷新状态，持续失败保留提示。
 - 补齐休眠主会话的排队取消与原生子任务中断，保留身份、修订号、权限范围和取消检查。
 
-224 项自动回归通过，并以生产组件和 DSH 原生菜单、弹窗完成隔离界面验收，覆盖冷启动 405 自动恢复、团队设置保存、模式交接、420px 窄屏与深色模式。正式 DSH 窗口当前最小化，桌面点击及真实多模型联网端到端尚未完成验收。安装后正常彻底退出并重新打开 DSH 加载后端。
+225 项自动回归通过，并以生产组件和 DSH 原生菜单、弹窗完成隔离界面验收，覆盖冷启动 405 自动恢复、团队设置保存、模式交接、420px 窄屏与深色模式。正式 DSH 窗口当前最小化，桌面点击及真实多模型联网端到端尚未完成验收。安装后正常彻底退出并重新打开 DSH 加载后端。

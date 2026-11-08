@@ -137,7 +137,7 @@ test('the model can discover, edit and apply team configuration through the norm
  const childCatalog=await f.bots.execute({action:'catalog'},{agent:child});assert.equal(childCatalog.configuration,undefined);assert.equal(childCatalog.revision,undefined);
 }));
 async function client(extra={}){
- const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.qa={callControl};return {name:'dsh-ui-stronger',inject:");
+ const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.qa={callControl,TEAM_CSS};return {name:'dsh-ui-stronger',inject:");
  const window={location:{protocol:'dsh-app:'},__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?React:{})}};
  vm.runInNewContext(source,{window,AbortSignal,setTimeout,clearTimeout,...extra});return window.qa;
 }
@@ -153,4 +153,12 @@ test('a disconnected startup waits for connection readiness, supports cancellati
  assert.equal(await callControl(ctx,'sessionPresetStatus',{}),'ready');assert.equal(calls,1);
  await assert.rejects(callControl(ctx,'sessionPresetStatus',{},AbortSignal.abort()));
  ctx.connection.rpc.call=async(channel,method)=>{throw Error('transport failure for '+channel+'/'+method+': HTTP 405');};await assert.rejects(callControl(ctx,'sessionPresetStatus',{}),/405/);
+});
+
+test('team workspace styles preserve the embedded native conversation buttons and typography',async()=>{
+ const {TEAM_CSS}=await client();
+ assert(!TEAM_CSS.includes('.zs-team-workspace button{'));
+ assert(TEAM_CSS.includes('.zs-team-workspace button:not(.zs-team-main-conversation *)'));
+ assert(!TEAM_CSS.includes('.zs-team-coordinator strong{'));
+ assert(!TEAM_CSS.includes('.zs-team-coordinator small,'));
 });
