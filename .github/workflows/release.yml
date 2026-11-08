@@ -1,4 +1,4 @@
-# Release 0.19.0: team workspace and startup status recovery.
+# Release 0.19.1: team workspace and startup status recovery.
 name: Publish audited release
 on:
   workflow_dispatch:

@@ -128,6 +128,14 @@ test('team configuration uses atomic revisions and rejects corrupt persisted rec
  assert.equal(results.filter(row=>row.status==='fulfilled').length,1);assert.equal(results.filter(row=>row.status==='rejected').length,1);
  await writeFile(f.team.file,JSON.stringify({version:1,sessions:[]}));const loaded=new TeamMode(f.dir,f.ctx,f.bots,f.workbench);await assert.rejects(loaded.load(),/损坏/);assert.equal(loaded.ready,false);
 }));
+test('the model can discover, edit and apply team configuration through the normal tool entry point',()=>fixture(async f=>{
+ await f.enter();const catalog=await f.bots.execute({action:'catalog'},f.exec);
+ assert.equal(catalog.revision,f.team.session('main').revision);catalog.configuration.members[0].identity='A focused source reader';catalog.configuration.defaults={model:{provider:'p',model:'small'},effort:'medium'};
+ await f.bots.execute({action:'configure_team',configuration:catalog.configuration,revision:catalog.revision},f.exec);
+ const run=await f.bots.execute({action:'spawn',task:'One bounded source task'},f.exec),child=f.agents.get(run.childId);
+ assert.match(f.activations[0].request.prompt[0].text,/focused source reader/);assert.equal(f.activations[0].request.agentOptions.model,'small');
+ const childCatalog=await f.bots.execute({action:'catalog'},{agent:child});assert.equal(childCatalog.configuration,undefined);assert.equal(childCatalog.revision,undefined);
+}));
 async function client(extra={}){
  const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.qa={callControl};return {name:'dsh-ui-stronger',inject:");
  const window={location:{protocol:'dsh-app:'},__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?React:{})}};
