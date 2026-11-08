@@ -33,7 +33,7 @@ test('catalog extension arguments bypass shared cache and keep receiver and sync
 test('preset entry wins native slot priority and preserves injected hooks and label',async()=>{
  const {wirePresetEntry}=await client();let cleanup,component,meta,section;
  const native={options:{id:'agent-preset',order:-10,priority:30},locale:'native',inject:()=>({}),component:()=>null};
- const ctx={effect:fn=>cleanup=fn(),slots:{subscribe:()=>()=>{},entriesOfSlot:name=>name==='sidebar.settings'?[{store:{create:()=>({actions:{openSection:id=>section=id}})}}]:[native],register:(m,c)=>{meta=m;component=c;return()=>{};}}};
+ const ctx={effect:fn=>cleanup=fn(),slots:{subscribe:()=>()=>{},entriesOfSlot:name=>name==='sidebar.settings'?[{store:{create:()=>({actions:{openSection:id=>section=id}})}}]:name==='conversation.session.header.actions'?[native]:[],register:(m,c)=>{meta=m;component=c;return()=>{};}}};
  wirePresetEntry(ctx);assert.equal(meta.inject,native.inject);assert.equal(meta.locale,'native');assert.equal(meta.priority,-100);
  // Exercise the produced button without mounting hooks into a second React runtime.
  const old=React.useState;React.useState=()=>['',()=>{}];
@@ -56,4 +56,29 @@ test('mode picker saves intent for the current session and never creates another
  ctx.connection.rpc.call=async()=>({ok:false,error:{message:'mode unavailable'}});
  await assert.rejects(selectPreset(ctx,'one','ptc'),/mode unavailable/);assert.equal(started.length,0);
  await assert.rejects(selectPreset(ctx,'one',''),/请选择/);
+});
+
+test('the hero slot is registered independently and keeps the native session binding, hooks and lifecycle',async()=>{
+ const {wirePresetEntry}=await client(),listeners=new Map(),registrations=[],disposed=[];
+ const header={options:{id:'agent-preset',priority:10},inject:()=>({header:true}),locale:'header-locale',component:()=>null};
+ const hero={options:{id:'hero-native',priority:25},inject:()=>({hero:true}),store:{native:true},locale:'hero-locale',component:()=>null};
+ let ready=false,cleanup;
+ const ctx={effect:fn=>cleanup=fn(),slots:{entriesOfSlot:name=>name==='conversation.hero.agentPreset'?(ready?[hero]:[]):[header],subscribe:(name,fn)=>{listeners.set(name,fn);return()=>listeners.delete(name);},register:(metadata,component)=>{registrations.push({metadata,component});return()=>disposed.push(metadata.name);}}};
+ wirePresetEntry(ctx);assert.equal(registrations.length,1);ready=true;listeners.get('conversation.hero.agentPreset')();assert.equal(registrations.length,2);
+ const registered=registrations.find(row=>row.metadata.name==='conversation.hero.agentPreset');assert.equal(registered.metadata.inject,hero.inject);assert.equal(registered.metadata.store,hero.store);assert.equal(registered.metadata.locale,hero.locale);assert.equal(registered.metadata.priority,-100);
+ const oldEffect=React.useEffect;React.useEffect=()=>{};
+ try{
+  const props={sessionId:'blank-one',useAgentPresetSeat:select=>select({current:'ptc',options:[{id:'ptc'}]}),useDeveloperTools:select=>select(true),useSessionRetainInfo:select=>select({retainedBy:{mainView:1}}),select:async()=>{},t:key=>key==='presetPtcName'?'PTC 模式':key};
+  const element=registered.component(props);assert.equal(element.type.name,'PresetPicker');assert.equal(element.props.sessionId,'blank-one');assert.equal(element.props.label,'PTC 模式');assert.equal(element.props.selectNative,props.select);
+  assert.equal(registered.component({...props,useSessionRetainInfo:select=>select({retainedBy:{mainView:0}})}),null);
+  listeners.get('conversation.hero.agentPreset')();assert.equal(registrations.length,2,'no duplicate adapter on slot notifications');
+ }finally{React.useEffect=oldEffect;cleanup();}
+ assert.equal(disposed.length,2);assert.equal(listeners.size,0);
+});
+test('a workspace-less hero stages native presets and refuses team mode before any backend write',async()=>{
+ const {selectPreset}=await client(),native=[],remote=[];
+ const ctx={connection:{rpc:{call:async(...args)=>remote.push(args)}}};
+ const result=await selectPreset(ctx,undefined,'ptc',async id=>{native.push(id);});assert.equal(result.current,'ptc');assert.deepEqual(native,['ptc']);assert.equal(remote.length,0);
+ await assert.rejects(selectPreset(ctx,undefined,'team',async()=>{}),/先选择工作区/);assert.equal(remote.length,0);
+ await assert.rejects(selectPreset(ctx,undefined,'standard',async()=> 'native refusal'),/native refusal/);
 });
