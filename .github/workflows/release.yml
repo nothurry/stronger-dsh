@@ -1,4 +1,4 @@
-# Release 0.18.28: compact native anchored preset menu.
+# Release 0.18.29: selected WeChat memory and independent settings save.
 name: Publish audited release
 on:
   workflow_dispatch:
@@ -31,4 +31,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           version=$(node -p 'JSON.parse(require("fs").readFileSync("package.json")).version')
-          gh release create "v$version" "dist/dsh-ui-stronger-$version.tgz" "dist/dsh-ui-stronger-$version.sha256" --target "$GITHUB_SHA" --title "Stronger DSH $version" --notes "Compact native anchored mode menu with explicit new-session choices, keyboard access and dark and narrow layouts. Public source contains no private character, voice model, audio or user data. See README for discovery source and safety limitations."
+          gh release create "v$version" "dist/dsh-ui-stronger-$version.tgz" "dist/dsh-ui-stronger-$version.sha256" --target "$GITHUB_SHA" --title "Stronger DSH $version" --notes "Selective WeChat conversation memory sharing, owner-only memory commands and independent workspace settings save with consistent controls. Public source contains no private character, voice model, audio or user data. See README for discovery source and safety limitations."
