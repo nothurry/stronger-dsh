@@ -15,7 +15,7 @@ dsh plugin --profile desktop add <归档的绝对路径>
 也可直接安装当前预构建包：
 
 ```powershell
-dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.5/dsh-ui-stronger-0.19.5.tgz
+dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.6/dsh-ui-stronger-0.19.6.tgz
 ```
 
 安装后正常重启 DSH。依赖仍从 npm 解析，并非完全离线。已有本机设置保留。
@@ -425,3 +425,9 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 
 - [SearXNG Search API](https://docs.searxng.org/dev/search_api.html)
 - [Open Deep Research](https://github.com/langchain-ai/open_deep_research)
+
+## 0.19.6 搜索降级与耗时修正
+
+修正搜索超时降级。部分查询或补读超时时保留已取得的有效来源，只统计实际发出的查询，并标记未完成路径。缓存命中分别记录本次读取耗时和原始查询耗时。
+
+253 项回归测试通过。包括并发、缓存隔离、独立取消、超时保留成功结果、来源排序及正常工具入口。搜索范围、速度与平台可访问性依赖已配置的 DSH 原生联网提供商。

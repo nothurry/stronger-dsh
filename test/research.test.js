@@ -110,3 +110,34 @@ test('malformed provider rows are discarded, future dates gain no recency bonus 
  const future=rankResearch({query:'latest Python API',sources:[{...source('https://docs.python.org/3/'),publishedAt:'2099-01-01'}]});
  assert.equal(future.sources[0].rank.freshness,0);f.bridge.close();
 });
+
+test('a search deadline preserves successful sources and counts only actually started provider queries',async t=>{
+ const deadline=new AbortController();t.mock.method(AbortSignal,'timeout',()=>deadline.signal);
+ let started=0;const f=fixture(async()=>{started++;return started===1?{sources:[source('https://docs.python.org/3/')]}:new Promise(()=>{});});
+ const request=f.bridge.search({...args,mode:'deep',platforms:['web','official','scholar','code','news','video']},f.exec);
+ for(let i=0;i<20&&started<4;i++)await new Promise(resolve=>setImmediate(resolve));
+ deadline.abort(new DOMException('Controlled deadline','TimeoutError'));
+ const result=await request;assert.equal(result.sources.length,1);assert.equal(result.status,'partial');assert(result.timedOut);
+ assert.equal(result.stats.queries,started);assert(started<6);assert.equal(result.stats.plannedQueries,6);assert(result.failures.every(row=>row.code==='WEB_TIMEOUT'));
+ assert.equal(f.bridge.cache.size,0,'incomplete timed-out work must not become a cached final result');f.bridge.close();
+});
+
+test('a deadline without any successful source rejects, and a cache hit reports current lookup time separately',async t=>{
+ const deadline=new AbortController();t.mock.method(AbortSignal,'timeout',()=>deadline.signal);
+ const f=fixture(async()=>new Promise(()=>{}));const pending=f.bridge.search(args,f.exec),rejected=assert.rejects(pending);
+ await new Promise(resolve=>setImmediate(resolve));deadline.abort(new DOMException('Controlled deadline','TimeoutError'));await rejected;f.bridge.close();
+ t.mock.restoreAll();
+ const cached=fixture(async()=>({sources:[source('https://docs.python.org/3/')]}));await cached.bridge.search(args,cached.exec);
+ const row=[...cached.bridge.cache.values()][0];row.value.stats.elapsedMs=54321;
+ const result=await cached.bridge.search(args,cached.exec);assert.equal(result.cache.originalElapsedMs,54321);assert(result.stats.elapsedMs<54321);assert.equal(result.stats.queries,0);cached.bridge.close();
+});
+
+test('a page-read deadline retains successful search snippets and marks the result partial',async t=>{
+ const deadline=new AbortController();t.mock.method(AbortSignal,'timeout',()=>deadline.signal);
+ const f=fixture(async()=>({sources:[source('https://docs.python.org/3/')]}));let fetching=false;
+ f.web.fetch=async()=>{fetching=true;return new Promise(()=>{});};
+ const pending=f.bridge.search({...args,verifyTop:1},f.exec);
+ for(let i=0;i<10&&!fetching;i++)await new Promise(resolve=>setImmediate(resolve));assert(fetching);
+ deadline.abort(new DOMException('Controlled page deadline','TimeoutError'));
+ const result=await pending;assert.equal(result.sources.length,1);assert.equal(result.sources[0].kind,'snippet');assert.equal(result.status,'partial');assert(result.timedOut);assert.equal(result.fetchFailures[0].code,'WEB_TIMEOUT');f.bridge.close();
+});

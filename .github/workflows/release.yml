@@ -1,4 +1,4 @@
-# Release 0.19.5: scoped multi-platform research and source ranking.
+# Release 0.19.6: scoped multi-platform research and source ranking.
 name: Publish audited release
 on:
   workflow_dispatch:
