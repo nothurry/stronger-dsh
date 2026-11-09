@@ -15,7 +15,7 @@ dsh plugin --profile desktop add <归档的绝对路径>
 也可直接安装当前预构建包：
 
 ```powershell
-dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.4/dsh-ui-stronger-0.19.4.tgz
+dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.5/dsh-ui-stronger-0.19.5.tgz
 ```
 
 安装后正常重启 DSH。依赖仍从 npm 解析，并非完全离线。已有本机设置保留。
@@ -406,3 +406,22 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 - [Hermes Skills](https://hermes-agent.nousresearch.com/docs/user-guide/features/skills)
 - [Hermes Delegation](https://hermes-agent.nousresearch.com/docs/user-guide/features/delegation)
 - [Anthropic Multi-Agent Research](https://github.com/anthropics/claude-agent-sdk-demos/tree/main/research-agent)
+
+## 0.19.5 搜索路径与来源排序
+
+- 扩展 workspace_world，新增 plan、search 和 rank。平台路径覆盖官方资料、论文研究、代码模型、新闻、X/微博、YouTube/B站/抖音、社区、中文站点、标准和公开数据。
+- search复用DSH当前启用的原生联网搜索及fetch提供商。默认两路并行，可选balanced/deep，最多6次查询、3路并行，按需补读前1–3条原文。返回成功/部分成功/无结果/失败状态及各路径错误码。
+- 增加透明来源排序，结合相关性、已知官方/政府/标准/研究域名、时效与正文补读状态，并降低同域重复结果的权重。标题自称官方不加分，预印本单独标记。手动提交材料保持未独立核验的来源标记。
+- 标准化跟踪链接、YouTube和X链接去重。同一会话、工作区和提供商下共享重复的在途请求，成功结果短期缓存，时效与部分失败结果使用更短有效期，可用fresh跳过。缓存命中不再发起联网查询。
+- 联网查询继续经过执行审查，搜索提供商未启用/不可认证时拒绝执行。取消与停用会终止当前搜索，缓存只在本机内存中保留，参数和结果有界。
+
+250项回归通过，覆盖并发上限、缓存隔离/命中、取消、失败降级、来源排序、去重和工具入口。验证采用受控提供商与已安装DSH的公开web服务接口契约，真实跨平台覆盖、字幕和速度取决于用户配置的原生联网提供商及平台可访问性。安装后正常彻底退出并重开DSH加载新版后端。
+
+模型可通过 `/world-research` 或原生 `skill` 加载检索流程。`workspace_world` 的 `search` 接受 query、platforms、officialDomains、mode、maxQueries、limit、verifyTop 和 fresh。简单问题可使用 maxQueries=1，跨平台核对使用 balanced/deep 并明确平台。plan只生成路线，rank只处理已有来源。time/evidence保留原接口。
+
+分数来自相关性和域名先验等可解释项目，排序结果附带依据和内容读取状态。指定officialDomains会定向查询，但不会证明平台账号或内容身份。视频、社交和登录后内容需要联网提供商或现有平台工具实际可访问；搜索命中不等于获得字幕。
+
+分类路线参考SearXNG，查询去重和有界内容整理参考Open Deep Research。实现使用DSH现有提供商配置。
+
+- [SearXNG Search API](https://docs.searxng.org/dev/search_api.html)
+- [Open Deep Research](https://github.com/langchain-ai/open_deep_research)

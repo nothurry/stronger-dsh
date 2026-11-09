@@ -1,4 +1,4 @@
-# Release 0.19.4: task skill routing and reviewed agent handoffs.
+# Release 0.19.5: scoped multi-platform research and source ranking.
 name: Publish audited release
 on:
   workflow_dispatch:
@@ -31,4 +31,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           version=$(node -p 'JSON.parse(require("fs").readFileSync("package.json")).version')
-          gh release create "v$version" "dist/dsh-ui-stronger-$version.tgz" "dist/dsh-ui-stronger-$version.sha256" --target "$GITHUB_SHA" --title "Stronger DSH $version" --notes "Adds task-oriented skill discovery, bounded worker briefings and native result handoff, with review-gated dependent tasks and scoped result access. Public source contains no private character, voice model, audio or user data. See README for discovery source and safety limitations."
+          gh release create "v$version" "dist/dsh-ui-stronger-$version.tgz" "dist/dsh-ui-stronger-$version.sha256" --target "$GITHUB_SHA" --title "Stronger DSH $version" --notes "Adds bounded parallel search through the configured native web provider, platform routes, transparent source ranking, deduplication and scoped short-lived caching. Public source contains no private character, voice model, audio or user data. See README for discovery source and safety limitations."
