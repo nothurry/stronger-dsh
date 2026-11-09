@@ -15,7 +15,7 @@ dsh plugin --profile desktop add <归档的绝对路径>
 也可直接安装当前预构建包：
 
 ```powershell
-dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.7/dsh-ui-stronger-0.19.7.tgz
+dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.8/dsh-ui-stronger-0.19.8.tgz
 ```
 
 安装后正常重启 DSH。依赖仍从 npm 解析，并非完全离线。已有本机设置保留。
@@ -444,3 +444,7 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 - OCR复用已配置且声明图片能力的DSH模型。支持选择或粘贴1至4张PNG/JPG/WebP、总计8MB，输出JSON文字证据。纯文本主模型可通过 workspace_ocr 按需识别最新用户图片。图片与网页文字均作为外部参考数据。
 
 264项回归测试通过，覆盖即时切换、过期响应、记忆隔离和撤权、技能目录稳定、定时幂等与错过恢复、原生浏览器共存、OCR接口和审查反馈。隔离生产组件验收了定时保存/取消、人设开关、工作区共享保存和图片上传到JSON流程，未观察控制台错误或横向溢出。OCR使用受控模型验证接口，真实识别准确率及全部第三方插件组合尚未全面实测。
+
+## 0.19.8 共享记忆的微信会话选择
+
+共享组支持单独选择微信会话或整个工作区。选择器区分微信与桌面对话，原有微信互通授权继续生效。265项回归测试通过。

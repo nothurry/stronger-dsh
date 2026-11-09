@@ -1,3 +1,4 @@
+import {MemorySharing} from '../lib/memory-sharing.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm,readFile,writeFile} from 'node:fs/promises';
@@ -101,3 +102,16 @@ test('legacy global memory requires opt-in for a shared pool, and corrupt pool s
  await w.dispose();const file=path.join(dir,'workspace.json'),saved=JSON.parse(await readFile(file,'utf8'));saved.memoryPools[0].cwds='invalid';const raw=JSON.stringify(saved);await writeFile(file,raw);
  const broken=new Workspace(dir);await assert.rejects(broken.load(),/设置无效/);assert.equal(await readFile(file,'utf8'),raw);assert.equal(broken.ready,false);
 }));
+
+test('shared pools can select an individual WeChat conversation while the original WeChat peer picker and channel permissions stay scoped',async()=>{
+ const config={sessions:{wechat:'/work'},allowedCwds:['/work'],shareMemory:false,memorySessionIds:[]};
+ const rows=[{header:{id:'desktop',cwd:'/work'},title:'Desktop'},{header:{id:'wechat',cwd:'/work'},title:'WeChat'},{header:{id:'child',cwd:'/work',origin:'subagent'},title:'Child'},{header:{id:'outside',cwd:'/other'},title:'Outside'}];
+ const ctx={get:name=>name==='sessionQuery'?{filterSessions:async()=>rows}:name==='sessions'?new Map(rows.map(row=>[row.header.id,{header:row.header}])):undefined};
+ const sharing=new MemorySharing(ctx,()=>config);
+ assert.deepEqual((await sharing.candidates(['/work'])).items.map(row=>row.id),['desktop']);
+ const all=(await sharing.candidates(['/work'],undefined,{includeWechat:true})).items;
+ assert.deepEqual(all.map(row=>row.id),['desktop','wechat']);assert.equal(all[1].channel,'wechat');
+ assert.equal(sharing.sessionsAllowed('wechat','desktop'),false);
+ config.shareMemory=true;config.memorySessionIds=['desktop'];assert.equal(sharing.sessionsAllowed('wechat','desktop'),true);
+ sharing.deleted=()=>['wechat'];assert.deepEqual((await sharing.candidates(['/work'],undefined,{includeWechat:true})).items.map(row=>row.id),['desktop']);
+});
