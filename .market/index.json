@@ -26,8 +26,8 @@
         "zh": "DSH 界面与能力增强"
       },
       "description": {
-        "en": "Monochrome UI, task skill discovery, reviewed agent handoffs, context recall and ClawBot reliability.",
-        "zh": "黑白灰淡紫界面与动效、团队工作区与阶段汇报、本机技能、上下文召回及 ClawBot 增强。"
+        "en": "Monochrome UI, bounded multi-platform research, source ranking, local skills and agent collaboration.",
+        "zh": "黑白灰淡紫界面、多平台检索与来源排序、本机技能、上下文召回及智能体协作。"
       },
       "author": "liyuxuan20111101",
       "homepage": "https://github.com/nothurry/stronger-dsh",
@@ -40,11 +40,11 @@
       "versions": [
         {
           "version": "0.19.5",
-          "publishTimestamp": 1794224504,
+          "publishTimestamp": 1794228106,
           "source": {
             "type": "git",
             "url": "https://github.com/nothurry/stronger-dsh.git",
-            "commit": "5ab110ac0404f849d1f38c1a15c08168253a61bd"
+            "commit": "87e2336ea3f9eea431f9a7250c703d8baecfb12a"
           },
           "engines": {
             "dsh": ">=0.2.1-rc.3 <0.3.0-0"
