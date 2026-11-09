@@ -15,7 +15,7 @@ dsh plugin --profile desktop add <归档的绝对路径>
 也可直接安装当前预构建包：
 
 ```powershell
-dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.3/dsh-ui-stronger-0.19.3.tgz
+dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.4/dsh-ui-stronger-0.19.4.tgz
 ```
 
 安装后正常重启 DSH。依赖仍从 npm 解析，并非完全离线。已有本机设置保留。
@@ -388,3 +388,21 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 - 为上下文策略、智能体角色、本机能力和工作模块初始读取失败增加重试；未成功读取已有模块前禁止编辑保存，避免覆盖原设置。
 
 231 项自动回归通过。以生产组件、DSH 原生菜单和实际插件后端进行了隔离界面验收，覆盖新会话团队入口、模块失败重试、技能开关、微信设置保存、压缩阈值、背景、工作区改名、导入安全显示、用量及 420px 窄窗口；生产依赖审计未发现已知漏洞。隔离验收不等于真实联网多模型协作或微信发送验收，正式桌面点击验收仍受桌面控制限制；不能保证没有未知漏洞。安装后正常彻底退出并重新打开 DSH 以加载后端。
+
+## 0.19.4 技能调用与协作交接
+
+- 技能目录新增按任务目标检索，可只查已启用且当前通道/工作区可访问的技能摘要。正文继续通过原生 skill 按需读取。子任务可指定 skills，并携带有界 context 与来源指针。
+- 子任务启动时附带适用技能候选，角色目录补充职责摘要。省略 profileId 时按启用角色的职责和技能匹配，修复自定义子角色配置下缺省派发失败。
+- 捕获原生子任务的实际文字结果，前置交接控制在总计 6,000 字符内，截断后可按 taskId 补读。子成员仅能查看本任务的已声明依赖。
+- 可将关键任务标为 requireReview，依赖任务等待主模型验收后再启动。核验拒绝会阻断后继，原生任务结果变化会撤销旧验收。已结束成员的后续工作通过新任务接受并发和次数预算检查。
+- 普通协作看板及团队成员进度中增加可展开的「交接与技能」，显示指定技能、参考内容、实际结果和验收要求。
+
+239 项回归通过，覆盖正常工具入口的技能发现、派发、验收、自动释放依赖、通道隔离、幂等与预算约束。隔离生产组件和实际插件后端的界面验收通过。真实联网模型的自主选技能率、任务完成率及提速幅度尚未进行量化评测。安装后正常彻底退出并重新打开 DSH 加载新版后端。
+
+模型可用 `workspace_skill_catalog({task: "当前任务目标"})` 获取技能摘要，再通过原生 `skill` 读取适用正文。`workspace_team` 的 `spawn` 或 `dispatch.tasks` 可填写 `skills`（至多6项）、`context`（至多2400字符）和 `requireReview`。为关键产出设置 `requireReview: true` 后，主模型先读取实际结果并提交带依据的 `review`，后继任务才会开始。现有会话「子智能体」开关、并行上限及请求预算继续控制派发。
+
+设计参考了 Hermes 的渐进披露和精简子任务上下文，以及 Anthropic 示例中的主控与专职成员分工。实现使用 DSH 原生技能及子智能体服务。
+
+- [Hermes Skills](https://hermes-agent.nousresearch.com/docs/user-guide/features/skills)
+- [Hermes Delegation](https://hermes-agent.nousresearch.com/docs/user-guide/features/delegation)
+- [Anthropic Multi-Agent Research](https://github.com/anthropics/claude-agent-sdk-demos/tree/main/research-agent)
