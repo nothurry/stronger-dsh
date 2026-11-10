@@ -26,8 +26,8 @@
         "zh": "DSH 界面与能力增强"
       },
       "description": {
-        "en": "Monochrome UI, session tools, shared memory, agent collaboration, browser and OCR evidence.",
-        "zh": "黑白灰淡紫界面、会话定时、共享记忆、智能体协作、网页与OCR证据。"
+        "en": "Monochrome UI, shared memory, agent collaboration, MCP tool discovery and Windows controls.",
+        "zh": "黑白灰淡紫界面、共享记忆、智能体协作、MCP工具发现与Windows控件操作。"
       },
       "author": "liyuxuan20111101",
       "homepage": "https://github.com/nothurry/stronger-dsh",
@@ -40,11 +40,11 @@
       "versions": [
         {
           "version": "0.19.9",
-          "publishTimestamp": 1794243260,
+          "publishTimestamp": 1794313272,
           "source": {
             "type": "git",
             "url": "https://github.com/nothurry/stronger-dsh.git",
-            "commit": "770dc9f1b7136e4eb2862371ccf13e52cec8946b"
+            "commit": "5658725fcad69d4a315527607d0c989a3429411c"
           },
           "engines": {
             "dsh": ">=0.2.1-rc.3 <0.3.0-0"
