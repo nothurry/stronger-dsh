@@ -15,7 +15,7 @@ dsh plugin --profile desktop add <归档的绝对路径>
 也可直接安装当前预构建包：
 
 ```powershell
-dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.10/dsh-ui-stronger-0.19.10.tgz
+dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.11/dsh-ui-stronger-0.19.11.tgz
 ```
 
 安装后正常重启 DSH。依赖仍从 npm 解析，并非完全离线。已有本机设置保留。
@@ -470,3 +470,13 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 - 包含0.19.9的MCP按任务发现、按需参数检查、mcp-control技能，以及Windows UIA选择、开关状态、展开/折叠和滚动增强。
 
 280项回归测试通过，覆盖空闲维护调用、运行中消息边界、重启持久化、连续切换、竞态、错误回退、即时布局与进度交接。正式DSH桌面端端到端点击、真实Windows-MCP服务器操作、不同应用控件与模型任务成功率尚未全面验证。
+
+## 0.19.11 连续动效与稳定会话视图
+
+- 快速切换时从当前可见的透明度和位置接续过渡，单个元素只保留一条本插件动画。入场160至260毫秒，小幅位移和柔和减速；新消息错开16毫秒、最多48毫秒。
+- 普通、团队加载中和团队就绪视图保留原生聊天组件的相同结构位置，减少切换时的重建和跳变。主协调员在上，成员卡片在下，消息与进度继续保留。
+- 移除用户新消息同时触发CSS与脚本动画的重复效果。单批最多6条动画，长历史批量插入和屏幕外元素保持即时呈现。标签响应限于聊天和本插件表面。
+- 统一扩展侧栏、页面、模式菜单、团队配置与删除弹窗的短过渡。窗口隐藏、减少动态效果或停用插件时结束本插件动画，释放观察器和监听。
+- 包含0.19.9的MCP发现、按需schema和Windows控件能力，以及0.19.10的空闲即时切换、运行任务等待下一条用户消息和进度交接。
+
+283项回归测试通过，覆盖动画续接、并发上限、可见性、减少动态效果、组件结构稳定、即时模式布局、任务消息边界、MCP权限审查与参数检查。正式桌面端到端操作、真实Windows-MCP服务器操作及不同机器的帧率尚未全面实测。
