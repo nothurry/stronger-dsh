@@ -15,7 +15,7 @@ dsh plugin --profile desktop add <归档的绝对路径>
 也可直接安装当前预构建包：
 
 ```powershell
-dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.8/dsh-ui-stronger-0.19.8.tgz
+dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.9/dsh-ui-stronger-0.19.9.tgz
 ```
 
 安装后正常重启 DSH。依赖仍从 npm 解析，并非完全离线。已有本机设置保留。
@@ -448,3 +448,15 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 ## 0.19.8 共享记忆的微信会话选择
 
 共享组支持单独选择微信会话或整个工作区。选择器区分微信与桌面对话，原有微信互通授权继续生效。265项回归测试通过。
+
+## 0.19.9 MCP工具发现与Windows控件操作
+
+- 新增模型可调用的 workspace_mcp 和可独立开关的 mcp-control 内置技能。按任务检索当前会话可见工具，支持中文操作关键词，按需读取真实参数，使用revision检测目录或参数变化。
+- 复用DSH原生MCP连接、命名、执行、取消、日志和图片结果处理。发现入口不读取凭据、不启动服务器、不执行工具回调，实际操作直接调用原生工具，继续接受权限与执行前模型审查。
+- 参考Windows-MCP的观察、操作与核验流程。技能要求核对真实目标、截图缩放、操作后状态、有界等待与未知结果，避免重复提交。团队主控仍只调度，成员先报告计划并避免争抢桌面。
+- 现有Windows UIA后端新增选择、确定开关状态、展开/折叠和滚动，观察结果提供控件能力与状态。修改会清除旧观察，后续操作需重新观察；密码控件、微信来源、过期或跨会话目标继续拒绝。
+- 工具目录分批返回简述，完整schema按需读取，避免额外将全部MCP参数加入固定系统提示。没有新增连接管理界面。
+
+273项回归测试通过，包括原生MCP调用保留审查和下游拒绝、目录变更、会话隔离、按需参数、卸载共存、UIA状态参数与PowerShell语法。参考官方Windows-MCP和MCP工具规范，未复制其代码。真实Windows-MCP服务器端到端操作、不同应用的UIA实现与模型任务成功率尚未实测。服务器需通过DSH自行配置并启用，功能取决于该服务器实际提供的工具。
+
+参考 https://github.com/CursorTouch/Windows-MCP 和 https://modelcontextprotocol.io/specification/2025-06-18/server/tools
