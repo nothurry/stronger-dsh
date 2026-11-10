@@ -15,7 +15,7 @@ dsh plugin --profile desktop add <归档的绝对路径>
 也可直接安装当前预构建包：
 
 ```powershell
-dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.11/dsh-ui-stronger-0.19.11.tgz
+dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.12/dsh-ui-stronger-0.19.12.tgz
 ```
 
 安装后正常重启 DSH。依赖仍从 npm 解析，并非完全离线。已有本机设置保留。
@@ -480,3 +480,12 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 - 包含0.19.9的MCP发现、按需schema和Windows控件能力，以及0.19.10的空闲即时切换、运行任务等待下一条用户消息和进度交接。
 
 283项回归测试通过，覆盖动画续接、并发上限、可见性、减少动态效果、组件结构稳定、即时模式布局、任务消息边界、MCP权限审查与参数检查。正式桌面端到端操作、真实Windows-MCP服务器操作及不同机器的帧率尚未全面实测。
+
+## 0.19.12 小圆角与柔和灰阶
+
+- 控件采用6px小圆角、卡片8px、弹窗10px，并补齐原生导航、模式菜单、团队卡片与弹窗的一致性。保持原有对齐、留白及黑白灰淡紫配色。
+- 浅色页面使用柔和浅灰底，文字从接近纯黑调整为深灰，边线和阴影减轻；深色页面同步降低黑白反差。启动加载画面采用相同灰阶。
+- 修正扩展浮层内部仍覆盖旧文字颜色的问题，局部表面继承当前调色。现有界面强化开关继续控制这些样式。
+- 包含前三轮的MCP按任务发现、按需schema和Windows控件操作，以及即时模式视图、运行任务等待新消息、稳定会话结构和连续动效。
+
+285项回归测试通过，新增浅/深色正文与辅助文字对比度及圆角作用域检查。隔离生产组件和实际插件后端验证了界面页与背景页，实测控件6px、卡片8px、弹窗10px、背景rgb(243,243,245)、文字rgb(55,54,61)，没有控制台错误或横向溢出。正式桌面全流程、真实Windows-MCP操作及各机器帧率尚未全面实测。
