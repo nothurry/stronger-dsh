@@ -40,11 +40,11 @@
       "versions": [
         {
           "version": "0.19.12",
-          "publishTimestamp": 1794314961,
+          "publishTimestamp": 1794315978,
           "source": {
             "type": "git",
             "url": "https://github.com/nothurry/stronger-dsh.git",
-            "commit": "24ac3ba89cdfbb46ffce557ec7af5740d88554f0"
+            "commit": "4fdea15b1b7258cf567e8206b8ab0a0f439c6641"
           },
           "engines": {
             "dsh": ">=0.2.1-rc.3 <0.3.0-0"
