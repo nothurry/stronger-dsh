@@ -63,10 +63,14 @@ test('member progress is reported in stages, wakes timeline waiters and never fa
 test('switching out keeps running and queued tasks; returning requires a fresh complete handoff before admission',()=>fixture(async f=>{
  await f.enter();await f.bots.configurePolicy({sessionId:'main',revision:f.bots.state.revision,enabled:true,maxParallel:1,maxTasks:8});
  await f.bots.execute({action:'dispatch',key:'retained',tasks:[task('a'),task('b')]},f.exec);assert.equal(f.activations.length,1);
- await f.workbench.selectPreset('main','ptc');await f.workbench.applyPreset(f.parent);assert.equal(f.team.active('main'),false);assert.equal(f.bots.tasks.runs[1].status,'queued');
+ await f.workbench.selectPreset('main','ptc');await f.workbench.applyPreset(f.parent);assert.equal(f.team.active('main'),true);
+ f.events.push({seq:f.events.length,type:'user/message',data:{source:{kind:'user',rpcId:'switch-ordinary'},content:[{type:'text',text:'Continue in the selected ordinary mode.'}]}});
+ await f.workbench.applyPreset(f.parent);assert.equal(f.team.active('main'),false);assert.equal(f.bots.tasks.runs[1].status,'queued');
  f.finish('child-1');await f.bots.onEvent(f.sessions.get('child-1'),{type:'turn/end'});assert.equal(f.activations.length,1);assert.equal(f.bots.tasks.runs[0].done,true);
  const queuedId=f.bots.tasks.runs[1].id;f.events.push({seq:f.events.length,type:'user/message',data:{source:{kind:'user',rpcId:'continue'},content:[{type:'text',text:'Continue the retained scoped plan after checking its progress.'}]}});
- await f.workbench.selectPreset('main','team');await f.workbench.applyPreset(f.parent);assert.equal(f.activations.length,1);assert.match(f.team.guard({agent:f.parent,name:'read_file'}),/交接/);
+ await f.workbench.selectPreset('main','team');
+ f.events.push({seq:f.events.length,type:'user/message',data:{source:{kind:'user',rpcId:'switch-team'},content:[{type:'text',text:'Continue using the selected team mode.'}]}});
+ await f.workbench.applyPreset(f.parent);assert.equal(f.activations.length,1);assert.match(f.team.guard({agent:f.parent,name:'read_file'}),/交接/);
  const handoff=await f.bots.execute({action:'handoff'},f.exec);assert.equal(handoff.tasks.length,2);await f.bots.execute({action:'acknowledge',digest:handoff.digest},f.exec);
  await f.bots.execute({action:'advance'},f.exec);assert.equal(f.activations.length,2);assert.equal(f.bots.tasks.runs[1].id,queuedId);
 }));
@@ -89,7 +93,9 @@ test('model-authored member configuration cannot edit the coordinator, bypass re
 }));
 test('team state and progress survive reload and unchanged ordinary requests do not rewrite a completed handoff',()=>fixture(async f=>{
  await f.enter();await f.bots.execute({action:'spawn',task:'Persist progress'},f.exec);await f.bots.execute({action:'report',stage:'work',percent:40,summary:'Persisted stage',evidence:[]},{agent:f.agents.get('child-1')});
- await f.workbench.selectPreset('main','minimal');await f.workbench.applyPreset(f.parent);const handoff=await f.team.handoff('main');await f.team.acknowledge('main',handoff.digest);
+ await f.workbench.selectPreset('main','minimal');
+ f.events.push({seq:f.events.length,type:'user/message',data:{source:{kind:'user',rpcId:'switch-minimal'},content:[{type:'text',text:'Continue in minimal mode after checking progress.'}]}});
+ await f.workbench.applyPreset(f.parent);const handoff=await f.team.handoff('main');await f.team.acknowledge('main',handoff.digest);
  const loaded=new TeamMode(f.dir,f.ctx,f.bots,f.workbench);await loaded.load();assert.equal(loaded.session('main').active,false);assert(loaded.session('main').checkpoint.acknowledged);assert.equal(loaded.session('main').checkpoint.tasks[0].report.percent,40);
  const before=await readFile(loaded.file,'utf8');await loaded.transition(f.parent,false);assert.equal(await readFile(loaded.file,'utf8'),before);await loaded.close();
 }));

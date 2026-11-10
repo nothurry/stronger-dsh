@@ -23,6 +23,20 @@ test('mode selection changes layout before the next response and ignores a stale
  for(const off of cleanup.reverse())off?.();
 } );
 
+test('optimistic mode layout holds while save is pending and restores the previous layout on failure',async()=>{
+ const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.wireTeam=wireTeamWorkspace;return {name:'dsh-ui-stronger',inject:");
+ const states=[],listeners=new Map(),calls=[],cleanup=[];let cursor=0,rendered=false,component;
+ const fakeReact={createElement:(type,props,...children)=>({type,props:{...props,children}}),Fragment:'fragment',useState(initial){const index=cursor++;if(!(index in states))states[index]=typeof initial==='function'?initial():initial;return[states[index],value=>{states[index]=typeof value==='function'?value(states[index]):value;}];},useCallback:fn=>fn,useEffect(callback){if(!rendered)cleanup.push(callback());}};
+ const win={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?fakeReact:{})},addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:name=>listeners.delete(name)};
+ vm.runInNewContext(source,{window:win,document:{hidden:false},setInterval:()=>1,clearInterval(){},AbortController,AbortSignal,setTimeout,clearTimeout});
+ const ctx={connection:{rpc:{call:()=>new Promise(resolve=>calls.push(resolve))}},effect:callback=>cleanup.push(callback()),slots:{entriesOfSlot:()=>[{options:{id:'native'},component:()=>null}],subscribe:()=>()=>{},register(_options,fn){component=fn;return()=>{};}}};
+ win.wireTeam(ctx);const render=()=>{cursor=0;const value=component({sessionId:'one'});rendered=true;return value;};render();
+ listeners.get('ui-stronger-mode-change')({detail:{sessionId:'one',presetId:'team',pending:true}});assert.equal(render().props.className,'zs-team-workspace');assert.equal(calls.length,1);
+ calls[0]({ok:true,value:{requested:false}});await new Promise(resolve=>setImmediate(resolve));assert.equal(render().props.className,'zs-team-workspace');
+ listeners.get('ui-stronger-mode-change')({detail:{sessionId:'one',presetId:'standard'}});assert.equal(render().type,'fragment');assert.equal(calls.length,2);
+ for(const off of cleanup.reverse())off?.();
+});
+
 test('native browser body, slot key, controller injection, store and navigation controls survive enhancement and unload',async()=>{
  const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.wireBrowser=wireBrowserEvidence;return {name:'dsh-ui-stronger',inject:");
  const win={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?React:{})}};vm.runInNewContext(source,{window:win,AbortController});

@@ -15,7 +15,7 @@ dsh plugin --profile desktop add <归档的绝对路径>
 也可直接安装当前预构建包：
 
 ```powershell
-dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.9/dsh-ui-stronger-0.19.9.tgz
+dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.10/dsh-ui-stronger-0.19.10.tgz
 ```
 
 安装后正常重启 DSH。依赖仍从 npm 解析，并非完全离线。已有本机设置保留。
@@ -143,7 +143,7 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 
 ### HTTP 400 / 11128
 
-`Illegal API invocation from an unapproved channel`表示上游拒绝当前接入渠道。仅凭此错误不能判定具体适配器、账号状态或请求片段，缩短上下文及反复重发通常不能解决。请在DSH原生模型设置核对供应商及接入方式，查阅适配器支持范围，或改用允许当前客户端接入的API。已有[渠道插件上游报告](https://github.com/magpie-community/plugins/issues/279)记录同类拒绝，但不证明你的请求具有完全相同的触发条件。
+`Illegal API invocation from an unapproved channel`表示上游拒绝当前接入渠道。仅凭此错误不能判定具体适配器、账号状态或请求片段，缩短上下文及反复重发通常不能解决。请在DSH原生模型设置核对供应商及接入方式，查阅适配器支持范围，或改用允许当前客户端接入的API。已有[渠道插件上游报告](https://github.com/magpie-community/plugins/issues/280)记录同类拒绝，但不证明你的请求具有完全相同的触发条件。
 
 插件不伪装官方客户端、不隐藏客户端身份、不绕过上游访问限制。多插件同时调整同一个模型路由、上下文策略或主界面仍可能冲突，建议只保留一个策略来源。
 
@@ -460,3 +460,13 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 273项回归测试通过，包括原生MCP调用保留审查和下游拒绝、目录变更、会话隔离、按需参数、卸载共存、UIA状态参数与PowerShell语法。参考官方Windows-MCP和MCP工具规范，未复制其代码。真实Windows-MCP服务器端到端操作、不同应用的UIA实现与模型任务成功率尚未实测。服务器需通过DSH自行配置并启用，功能取决于该服务器实际提供的工具。
 
 参考 https://github.com/CursorTouch/Windows-MCP 和 https://modelcontextprotocol.io/specification/2025-06-18/server/tools
+
+## 0.19.10 模式切换与团队视图
+
+- 点击模式后立即更新当前会话的模式标识和视图，等待保存期间保持选定布局，保存失败后回到原布局并显示错误。团队视图采用主协调员在上、成员卡片在下的布局，配置读取时保持相同结构。
+- 会话空闲且没有未完成团队任务时，使用DSH原生runMaintenance原子准备模式，保留会话ID与日志。
+- 有进行中任务时记录待选模式，原任务继续使用原模式；下一次真实用户消息进入后才应用。连续工具步骤、其他智能体消息和重启均不会提前触发该选择。空闲检查与运行开始发生竞态时，持久保存待选状态。
+- 团队任务与成员阶段进度继续保留，切换交接仍需核对已完成、进行中、阻碍和下一步。旧宿主缺少空闲维护接口时，在用户消息请求前准备模式。
+- 包含0.19.9的MCP按任务发现、按需参数检查、mcp-control技能，以及Windows UIA选择、开关状态、展开/折叠和滚动增强。
+
+280项回归测试通过，覆盖空闲维护调用、运行中消息边界、重启持久化、连续切换、竞态、错误回退、即时布局与进度交接。正式DSH桌面端端到端点击、真实Windows-MCP服务器操作、不同应用控件与模型任务成功率尚未全面验证。
