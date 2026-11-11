@@ -8,6 +8,28 @@ import {Bots,wireBots} from '../lib/bots.js';
 async function fixture(fn){const data=await mkdtemp(path.join(tmpdir(),'team-scheduler-'));const events=[{seq:1,type:'user/message',data:{source:{kind:'user',rpcId:'human-fixture'}}}];const parent={id:'parent',session:{id:'parent',header:{cwd:'/work'},snapshotEvents:()=>events}},agents=new Map([['parent',parent]]),sessions=new Map([['parent',parent.session]]),specs=[],wakes=[];let active=0,peak=0;const service={resolveMaxDepth:()=>2,startActivation:async spec=>{assert(Array.isArray(spec.request.prompt),'DSH 0.2.2 expects message blocks');assert.equal(spec.request.maxDepth,1);const id='child-'+(specs.length+1);specs.push(spec);active++;peak=Math.max(peak,active);await new Promise(resolve=>setImmediate(resolve));active--;const log=[{seq:1,type:'turn/start',data:{}}],session={id,header:{origin:'subagent',parentSession:'parent',cwd:'/work'},snapshotEvents:()=>log};sessions.set(id,session);agents.set(id,{id,session});return {childId:id};},sendMessage:async(sender,to,content)=>{wakes.push({sender:sender.session.id,to,content});return 'accepted';},interrupt:(child,parent)=>{assert.equal(parent,agents.get('parent'));sessions.get(child).snapshotEvents().push({seq:99,type:'turn/end',data:{reason:{kind:'cancelled'}}});}};const ctx={get:name=>({agents:{get:id=>agents.get(id)},sessions:{get:id=>sessions.get(id)},subagents:service}[name])};let bots=new Bots(data,ctx);await bots.load();const exec={agent:parent,signal:new AbortController().signal};const enable=async patch=>bots.configurePolicy({sessionId:'parent',revision:bots.state.revision,enabled:true,maxParallel:2,maxTasks:8,...patch});const finish=(id,kind='completed')=>sessions.get(id).snapshotEvents().push({seq:2,type:'turn/end',data:{reason:{kind}}});try{await fn({bots,data,ctx,parent,exec,enable,specs,wakes,agents,sessions,events,finish,peak:()=>peak,reload:async()=>{await bots.close();bots=new Bots(data,ctx);await bots.load();return bots;}});}finally{await bots.close();await rm(data,{recursive:true,force:true});}}
 const task=(key,extra={})=>({key,task:'Read a bounded source and report '+key,acceptance:'Cite an actual location and explain limits',...extra});
 
+test('peers exchange scoped messages, broadcast once and expose acknowledgements to the coordinator',()=>fixture(async f=>{
+ await f.enable();await f.bots.execute({action:'dispatch',key:'peer-plan',tasks:[task('a'),task('b')]},f.exec);
+ const child={agent:f.agents.get('child-1')};
+ const inbox=await f.bots.execute({action:'inbox'},child);assert(inbox.peers.some(peer=>peer.id==='child-2'));
+ const waiting=f.bots.wait({timeoutMs:1000},f.exec);
+ while(!f.bots.waiters.get('parent')?.size)await new Promise(resolve=>setImmediate(resolve));
+ const sent=await f.bots.execute({action:'message',key:'finding',to:'child-2',text:'Use the verified source reference.'},child);
+ assert.equal((await waiting).timedOut,false);
+ const recipient={agent:f.agents.get('child-2')};
+ assert.equal((await f.bots.execute({action:'inbox'},recipient)).messages[0].id,sent.messageId);
+ await f.bots.execute({action:'ack',messageIds:[sent.messageId]},recipient);
+ assert(f.bots.timeline('parent').messages.find(message=>message.id===sent.messageId).acknowledgedAt);
+ const broadcast={action:'broadcast',key:'revise-plan',text:'Updated scope, read your inbox before the next stage.',wake:true};
+ assert.equal((await f.bots.execute(broadcast,f.exec)).results.length,2);
+ assert.equal(f.wakes.length,2);
+ assert((await f.bots.execute(broadcast,f.exec)).results.every(result=>result.duplicate));
+ assert.equal(f.wakes.length,2);
+ await assert.rejects(f.bots.execute({...broadcast,key:'child-wake'},child),/主协调员/);
+ const other=f.bots.tasks.runs.find(row=>row.childId==='child-2');other.cwd='/other';
+ await assert.rejects(f.bots.execute({action:'message',key:'outside',to:'child-2',text:'Do not leak this'},child),/同工作区/);
+}));
+
 test('lowering the session parallel limit preserves running workers and blocks new admission until below the cap',()=>fixture(async f=>{
  await f.enable({maxParallel:3});await f.bots.execute({action:'dispatch',key:'lower-cap',tasks:[task('a'),task('b'),task('c'),task('d')]},f.exec);assert.equal(f.specs.length,3);
  await f.enable({maxParallel:1});assert.equal(f.bots.timeline('parent').summary.running,3);

@@ -53,7 +53,7 @@ test('native browser body, slot key, controller injection, store and navigation 
 
 test('ordinary, loading and ready team layouts keep the native conversation at the same reconciliation path',async()=>{
  const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.Team=TeamWorkspace;return {name:'dsh-ui-stronger',inject:");
- const fakeReact={...React,useState:initial=>[initial,()=>{}]},win={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?fakeReact:{})}};
+ const fakeReact={...React,useState:initial=>[initial,()=>{}],useEffect:()=>{}},win={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?fakeReact:{})}};
  vm.runInNewContext(source,{window:win});
  const native=React.createElement('textarea',{key:'native-chat',defaultValue:'Unsent draft'}),base={sessionId:'one',requested:false,coordinator:{},defaults:{},members:[],timeline:{tasks:[],summary:{}},messages:[]};
  function locate(node,path=[]){
@@ -66,4 +66,30 @@ test('ordinary, loading and ready team layouts keep the native conversation at t
  const ordinary=win.Team({data:base,children:native}),loading=win.Team({data:{...base,requested:true,loading:true},children:native}),ready=win.Team({data:{...base,requested:true},children:native});
  assert.equal(ordinary.type,loading.type);assert.equal(loading.type,ready.type);assert(locate(ordinary));assert.deepEqual(locate(ordinary),locate(loading));assert.deepEqual(locate(loading),locate(ready));
  assert.equal(ordinary.props.className,'zs-team-layout-idle');assert.equal(ready.props.className,'zs-team-workspace');
+});
+
+test('team enhancement wraps the full native conversation shell and preserves its slot contracts',async()=>{
+ const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.wireTeam=wireTeamWorkspace;return {name:'dsh-ui-stronger',inject:");
+ const children={'conversation.header':{kind:'single',scope:'session-maybe'}},store={},inject=()=>({native:true}),Original=()=>null;
+ const entry={options:{name:'main.conversation',children,priority:0},component:Original,store,inject,locale:'native-conversation'};
+ const cleanup=[],queries=[];let options,component,calls=0;
+ const fakeReact={createElement:(type,props,...items)=>({type,props:{...props,children:items}}),Fragment:'fragment',useState:initial=>[initial,()=>{}],useCallback:fn=>fn,useEffect:fn=>cleanup.push(fn())};
+ const win={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?fakeReact:{})},addEventListener(){},removeEventListener(){}};
+ vm.runInNewContext(source,{window:win,document:{hidden:false},setInterval:()=>1,clearInterval(){},AbortController,AbortSignal,setTimeout,clearTimeout});
+ const ctx={effect:fn=>cleanup.push(fn()),connection:{rpc:{call:()=>{calls++;}}},slots:{entriesOfSlot:name=>{queries.push(name);return name==='main.conversation'?[entry]:[];},subscribe:name=>{assert.equal(name,'main.conversation');return()=>{};},register:(value,renderer)=>{options=value;component=renderer;return()=>{};}}};
+ win.wireTeam(ctx);assert.deepEqual(queries,['main.conversation']);assert.equal(options.name,'main.conversation');assert.equal(options.children,children);assert.equal(options.store,store);assert.equal(options.inject,inject);assert.equal(options.locale,entry.locale);
+ const rendered=component({sessionId:undefined,renderSlot:()=>null});assert.equal(calls,0,'blank workspace must not query a nonexistent session');assert.equal(rendered.props.children[0].type,Original);
+ for(const off of cleanup.reverse())off?.();
+});
+
+test('team roster uses an independent left column and native chat owns its composer',async()=>{
+ const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.Team=TeamWorkspace;window.css=TEAM_CSS;return {name:'dsh-ui-stronger',inject:");
+ const react={...React,useState:value=>[value,()=>{}],useEffect:()=>{}},win={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?react:{})}};
+ vm.runInNewContext(source,{window:win});
+ const data={requested:true,coordinator:{},defaults:{},members:[{id:'a',name:'执行成员',identity:'执行',duties:'范围内操作'},{id:'b',name:'核验成员',identity:'核验',duties:'核验结果'}],timeline:{tasks:[],summary:{}},messages:[]};
+ const element=win.Team({data,children:React.createElement('form',{'data-native-composer':true})});
+ const html=renderToStaticMarkup(element);assert(html.includes('<aside'));assert(html.includes('aria-label="团队成员"'));assert.equal((html.match(/团队配置/g)??[]).length,1);assert.equal((html.match(/data-native-composer/g)??[]).length,1);
+ assert.match(win.css,/grid-template-columns:clamp\(164px,21%,224px\) minmax\(0,1fr\)/);assert.match(win.css,/\.zs-team-roster\{grid-column:1;grid-row:1/);assert.match(win.css,/\.zs-team-coordinator\{grid-column:2/);
+ assert.doesNotMatch(win.css,/min-height:180px|max-height:38vh|\.zs-team-member\{animation:zs-/);
+ assert(win.css.includes('var(--dsw-alias-label-secondary'));assert(win.css.includes('var(--dsw-alias-bg-base'));
 });
