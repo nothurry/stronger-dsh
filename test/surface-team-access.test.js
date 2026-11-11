@@ -45,7 +45,7 @@ test('three file entry points share one accessible picker without native nested 
  const team=renderToStaticMarkup(React.createElement(win.qa.TeamAccess,{store:{},control:async()=>({}),sessionId:'one'}));
  assert.equal((team.match(/role="switch"/g)||[]).length,1);
  assert.match(team,/aria-label="允许本会话调用子智能体"/);
- assert.match(team,/aria-label="子智能体并行数量上限"/);
+ assert.match(team,/aria-label="子智能体数量上限"/);
  assert.doesNotMatch(source,/aria-label':'允许当前会话自主协作'/,'advanced panel does not duplicate the header switch');
  assert.match(source,/readVersion\.current===version/,'late status reads cannot overwrite a successful toggle');
 });

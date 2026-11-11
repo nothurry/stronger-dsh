@@ -26,6 +26,7 @@ async function fixture(run){
   const session={id,header:{origin:'subagent',parentSession:'parent',cwd:'/work'},snapshotEvents:()=>log};
   sessions.set(id,session);agents.set(id,{session});return {childId:id};
  }};
+ subagents.sendMessage=async(parent,id,prompt)=>{activations.push({reused:true,request:{parent,prompt}});const log=sessions.get(id).snapshotEvents();log.push({seq:Math.max(...log.map(event=>event.seq))+1,type:'turn/start'});return 'resumed';};
  const bots=new Bots(directory,context),workspace=new Workspace(directory);
  await bots.load();await workspace.load();wireBots(context,bots);
  bots.skillSuggestions=(task,id,cwd)=>workspace.skillCatalog({task,limit:3},cwd,workspace.channelFor(id)).skills;
@@ -70,13 +71,13 @@ test('normal tool dispatch passes skills and minimal context, captures native re
  await f.execute({action:'review',taskId:result.tasks[0].id,decision:'accepted',evidence:['Checked dataset.csv:4 independently']});
  assert.equal(f.activations.length,2);assert.match(f.activations[1].request.prompt[0].text,/Actual finding at dataset.csv:4/);
  assert(!f.activations[1].request.prompt[0].text.includes('hidden deliberation'));
- const worker={agent:f.agents.get('child-2')};
+ const worker={agent:f.agents.get(f.bots.timeline('parent').tasks[1].childId)};
  assert.equal((await f.bots.execute({action:'status',taskId:result.tasks[0].id},worker)).done,true);
  await assert.rejects(f.bots.execute({action:'cancel',taskId:result.tasks[0].id},worker));
  await f.execute({action:'spawn',task:'Unrelated work',key:'unrelated'});
  const unrelated=f.bots.timeline('parent').tasks.find(row=>row.key==='unrelated');
  await assert.rejects(f.bots.execute({action:'status',taskId:unrelated.id},worker));
- f.agents.get('child-2').session.header.cwd='/changed';
+ worker.agent.session.header.cwd='/changed';
  await assert.rejects(f.bots.execute({action:'status',taskId:result.tasks[0].id},worker));
 }));
 

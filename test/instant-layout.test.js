@@ -8,7 +8,7 @@ import {renderToStaticMarkup} from 'react-dom/server';
 test('mode selection changes layout before the next response and ignores a stale in-flight read',async()=>{
  const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.wireTeam=wireTeamWorkspace;return {name:'dsh-ui-stronger',inject:");
  const states=[],listeners=new Map(),calls=[],cleanup=[];let cursor=0,rendered=false,component;
- const fakeReact={createElement:(type,props,...children)=>({type,props:{...props,children}}),Fragment:'fragment',useState(initial){const index=cursor++;if(!(index in states))states[index]=typeof initial==='function'?initial():initial;return[states[index],value=>{states[index]=typeof value==='function'?value(states[index]):value;}];},useCallback:fn=>fn,useEffect(callback){if(!rendered)cleanup.push(callback());}};
+ const fakeReact={useRef:value=>({current:value}),createElement:(type,props,...children)=>({type,props:{...props,children}}),Fragment:'fragment',useState(initial){const index=cursor++;if(!(index in states))states[index]=typeof initial==='function'?initial():initial;return[states[index],value=>{states[index]=typeof value==='function'?value(states[index]):value;}];},useCallback:fn=>fn,useEffect(callback){if(!rendered)cleanup.push(callback());}};
  const win={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?fakeReact:{})},addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:name=>listeners.delete(name)};
  vm.runInNewContext(source,{window:win,document:{hidden:false},setInterval:()=>1,clearInterval(){},AbortController,AbortSignal,setTimeout,clearTimeout});
  const Original=()=>null,entry={options:{id:'native',priority:0},component:Original};
@@ -26,7 +26,7 @@ test('mode selection changes layout before the next response and ignores a stale
 test('optimistic mode layout holds while save is pending and restores the previous layout on failure',async()=>{
  const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.wireTeam=wireTeamWorkspace;return {name:'dsh-ui-stronger',inject:");
  const states=[],listeners=new Map(),calls=[],cleanup=[];let cursor=0,rendered=false,component;
- const fakeReact={createElement:(type,props,...children)=>({type,props:{...props,children}}),Fragment:'fragment',useState(initial){const index=cursor++;if(!(index in states))states[index]=typeof initial==='function'?initial():initial;return[states[index],value=>{states[index]=typeof value==='function'?value(states[index]):value;}];},useCallback:fn=>fn,useEffect(callback){if(!rendered)cleanup.push(callback());}};
+ const fakeReact={useRef:value=>({current:value}),createElement:(type,props,...children)=>({type,props:{...props,children}}),Fragment:'fragment',useState(initial){const index=cursor++;if(!(index in states))states[index]=typeof initial==='function'?initial():initial;return[states[index],value=>{states[index]=typeof value==='function'?value(states[index]):value;}];},useCallback:fn=>fn,useEffect(callback){if(!rendered)cleanup.push(callback());}};
  const win={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?fakeReact:{})},addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:name=>listeners.delete(name)};
  vm.runInNewContext(source,{window:win,document:{hidden:false},setInterval:()=>1,clearInterval(){},AbortController,AbortSignal,setTimeout,clearTimeout});
  const ctx={connection:{rpc:{call:()=>new Promise(resolve=>calls.push(resolve))}},effect:callback=>cleanup.push(callback()),slots:{entriesOfSlot:()=>[{options:{id:'native'},component:()=>null}],subscribe:()=>()=>{},register(_options,fn){component=fn;return()=>{};}}};
@@ -53,7 +53,7 @@ test('native browser body, slot key, controller injection, store and navigation 
 
 test('ordinary, loading and ready team layouts keep the native conversation at the same reconciliation path',async()=>{
  const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.Team=TeamWorkspace;return {name:'dsh-ui-stronger',inject:");
- const fakeReact={...React,useState:initial=>[initial,()=>{}],useEffect:()=>{}},win={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?fakeReact:{})}};
+ const fakeReact={useRef:value=>({current:value}),...React,useState:initial=>[initial,()=>{}],useEffect:()=>{}},win={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?fakeReact:{})}};
  vm.runInNewContext(source,{window:win});
  const native=React.createElement('textarea',{key:'native-chat',defaultValue:'Unsent draft'}),base={sessionId:'one',requested:false,coordinator:{},defaults:{},members:[],timeline:{tasks:[],summary:{}},messages:[]};
  function locate(node,path=[]){
@@ -73,7 +73,7 @@ test('team enhancement wraps the full native conversation shell and preserves it
  const children={'conversation.header':{kind:'single',scope:'session-maybe'}},store={},inject=()=>({native:true}),Original=()=>null;
  const entry={options:{name:'main.conversation',children,priority:0},component:Original,store,inject,locale:'native-conversation'};
  const cleanup=[],queries=[];let options,component,calls=0;
- const fakeReact={createElement:(type,props,...items)=>({type,props:{...props,children:items}}),Fragment:'fragment',useState:initial=>[initial,()=>{}],useCallback:fn=>fn,useEffect:fn=>cleanup.push(fn())};
+ const fakeReact={useRef:value=>({current:value}),createElement:(type,props,...items)=>({type,props:{...props,children:items}}),Fragment:'fragment',useState:initial=>[initial,()=>{}],useCallback:fn=>fn,useEffect:fn=>cleanup.push(fn())};
  const win={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?fakeReact:{})},addEventListener(){},removeEventListener(){}};
  vm.runInNewContext(source,{window:win,document:{hidden:false},setInterval:()=>1,clearInterval(){},AbortController,AbortSignal,setTimeout,clearTimeout});
  const ctx={effect:fn=>cleanup.push(fn()),connection:{rpc:{call:()=>{calls++;}}},slots:{entriesOfSlot:name=>{queries.push(name);return name==='main.conversation'?[entry]:[];},subscribe:name=>{assert.equal(name,'main.conversation');return()=>{};},register:(value,renderer)=>{options=value;component=renderer;return()=>{};}}};
