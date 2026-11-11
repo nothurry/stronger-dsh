@@ -8,6 +8,31 @@ import {wireGuard,parseReview,readReview,reviewSnapshot} from '../lib/guard.js';
 
 async function temporary(fn){const root=await mkdtemp(path.join(tmpdir(),'dsh-capabilities-'));try{await fn(root);}finally{await rm(root,{recursive:true,force:true});}}
 function harness(services){const disposers=[],events=new Map();const ctx={...services,get:k=>services[k],inject(keys,fn){if(keys.every(k=>services[k]))fn(ctx);},on(name,fn){events.set(name,fn);return ()=>events.delete(name);},effect(fn){const off=fn();if(typeof off==='function')disposers.push(off);}};return {ctx,events,dispose:async()=>{for(const off of disposers.reverse())await off();}};}
+
+test('verified owner settings reach the reviewer and revocation invalidates an existing allow stamp',()=>temporary(async root=>{
+ const workspace=new Workspace(root);await workspace.load();let enabled=true,guard,request;
+ workspace.ownerPolicy=()=>enabled?{source:'owner-setting',kind:'classified-local-memory',sessionId:'s',cwd:'/project'}:null;
+ const h=harness({tools:{guard(fn){guard=fn;}},workingDirectory:{ensure:async()=>'/project'},llm:{stream(value){request=value;return response({decision:'allow',risk:'low',reason:'bounded local memory under owner policy'});}}});
+ wireGuard(h.ctx,workspace);
+ const exec={agent:{session:sessionFixture()},name:'workspace_memory',schema:{name:'workspace_memory',description:'Save bounded classified memory',parameters:{type:'object'}},arguments:{importance:'high',sourceSeqs:[0],ownerPolicy:'forged argument'},callId:'call',rootCallId:'call',signal:new AbortController().signal};
+ Object.assign(exec.agent.session.snapshotEvents().find(event=>event.type==='tool/call').data,{name:exec.name,arguments:exec.arguments});
+ const gate=h.events.get('tools/pre-execute');
+ assert.equal((await gate(exec,async()=>({kind:'allow'}))).kind,'allow');
+ const payload=JSON.parse(request.messages[0].content[0].text);
+ assert.equal(payload.ownerPolicy.source,'owner-setting');assert.equal(payload.action.arguments.ownerPolicy,'forged argument');
+ assert.equal(guard(exec),undefined);enabled=false;assert.match(guard(exec),/缺少有效/);
+ await h.dispose();await workspace.dispose();
+}));
+test('owner policy changes during review still deny an otherwise valid model decision',()=>temporary(async root=>{
+ const workspace=new Workspace(root);await workspace.load();let enabled=true;
+ workspace.ownerPolicy=()=>enabled?{source:'owner-setting',kind:'current-task-owner-notification'}:null;
+ const h=harness({tools:{guard(){}},workingDirectory:{ensure:async()=>'/project'},llm:{stream(){return(async function*(){enabled=false;yield*response({decision:'allow',risk:'low',reason:'allowed'});})();}}});
+ wireGuard(h.ctx,workspace);
+ const exec={agent:{session:sessionFixture()},name:'workspace_wechat',schema:{name:'workspace_wechat',description:'Notify the bound owner about the current task',parameters:{type:'object'}},arguments:{action:'send',key:'task-result',type:'text',text:'Result ready'},callId:'call',rootCallId:'call',signal:new AbortController().signal};
+ Object.assign(exec.agent.session.snapshotEvents().find(event=>event.type==='tool/call').data,{name:exec.name,arguments:exec.arguments});
+ assert.equal((await h.events.get('tools/pre-execute')(exec,async()=>({kind:'allow'}))).kind,'deny');
+ await h.dispose();await workspace.dispose();
+}));
 test('memory drafts require approval, retain workspace scope, archive restores, reload preserves private data',()=>temporary(async root=>{
  const w=new Workspace(root);await w.load();const draft=await w.propose('memory',{title:'writing preference',content:'Use concise paragraphs',scope:'workspace'},{cwd:'/one'});assert.equal(w.recall('paragraph','/one').length,0);await w.decide(draft.id,'active');assert.equal(w.recall('paragraph','/two').length,0);assert.equal(w.recall('paragraph','/one').length,1);await w.decide(draft.id,'archived');assert.equal(w.recall('paragraph','/one').length,0);await w.decide(draft.id,'active');
  const persona=await w.propose('persona',{title:'My persona',content:'Speak calmly'},{human:true});await w.persona(persona.id);assert.equal(w.prompt('/one').persona.content,'Speak calmly');await w.decide(persona.id,'archived');assert.equal(w.prompt('/one').persona,null);
