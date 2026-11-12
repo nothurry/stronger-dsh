@@ -6,34 +6,34 @@ import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 
 test('mode selection changes layout before the next response and ignores a stale in-flight read',async()=>{
- const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.wireTeam=wireTeamWorkspace;return {name:'dsh-ui-stronger',inject:");
+ const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.TeamPortal=TeamWorkspacePortal;return {name:'dsh-ui-stronger',inject:");
  const states=[],listeners=new Map(),calls=[],cleanup=[];let cursor=0,rendered=false,component;
- const fakeReact={useRef:value=>({current:value}),createElement:(type,props,...children)=>({type,props:{...props,children}}),Fragment:'fragment',useState(initial){const index=cursor++;if(!(index in states))states[index]=typeof initial==='function'?initial():initial;return[states[index],value=>{states[index]=typeof value==='function'?value(states[index]):value;}];},useCallback:fn=>fn,useEffect(callback){if(!rendered)cleanup.push(callback());}};
- const win={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?fakeReact:{})},addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:name=>listeners.delete(name)};
+ const fakeReact={useRef:value=>({current:value}),createElement:(type,props,...children)=>({type,props:{...props,children}}),Fragment:'fragment',useState(initial){const index=cursor++;if(!(index in states))states[index]=index===1?{}:typeof initial==='function'?initial():initial;return[states[index],value=>{states[index]=typeof value==='function'?value(states[index]):value;}];},useLayoutEffect(){},useCallback:fn=>fn,useEffect(callback){if(!rendered)cleanup.push(callback());}};
+ const win={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?fakeReact:id==='react-dom'?{createPortal:element=>element}:{})},addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:name=>listeners.delete(name)};
  vm.runInNewContext(source,{window:win,document:{hidden:false},setInterval:()=>1,clearInterval(){},AbortController,AbortSignal,setTimeout,clearTimeout});
  const Original=()=>null,entry={options:{id:'native',priority:0},component:Original};
  const ctx={connection:{rpc:{call:(_channel,_action,_payload,signal)=>new Promise(resolve=>calls.push({signal,resolve}))}},effect:callback=>cleanup.push(callback()),slots:{entriesOfSlot:()=>[entry],subscribe:()=>()=>{},register(_options,fn){component=fn;return()=>{};}}};
- win.wireTeam(ctx);const render=()=>{cursor=0;const value=component({sessionId:'one'});rendered=true;return value;};
+ component=win.TeamPortal;const render=()=>{cursor=0;const value=component({sessionId:'one',ctx});rendered=true;return value;};
  render();assert.equal(calls.length,1);
  listeners.get('ui-stronger-mode-change')({detail:{sessionId:'one',presetId:'team'}});
- assert.equal(render().props.data.requested,true);assert.equal(calls.length,2);assert(calls[0].signal.aborted);
- calls[0].resolve({ok:true,value:{requested:false}});await new Promise(resolve=>setImmediate(resolve));assert.equal(render().props.data.requested,true);
- calls[1].resolve({ok:true,value:{requested:true,timeline:{tasks:[]}}});await new Promise(resolve=>setImmediate(resolve));assert.equal(render().props.data.requested,true);
- listeners.get('ui-stronger-mode-change')({detail:{sessionId:'one',presetId:'ptc'}});assert.equal(render().props.data.requested,false);
+ assert.equal(Boolean(render().props.children[1]?.props.data.requested),true);assert.equal(calls.length,2);assert(calls[0].signal.aborted);
+ calls[0].resolve({ok:true,value:{requested:false}});await new Promise(resolve=>setImmediate(resolve));assert.equal(Boolean(render().props.children[1]?.props.data.requested),true);
+ calls[1].resolve({ok:true,value:{requested:true,timeline:{tasks:[]}}});await new Promise(resolve=>setImmediate(resolve));assert.equal(Boolean(render().props.children[1]?.props.data.requested),true);
+ listeners.get('ui-stronger-mode-change')({detail:{sessionId:'one',presetId:'ptc'}});assert.equal(Boolean(render().props.children[1]?.props.data.requested),false);
  for(const off of cleanup.reverse())off?.();
 } );
 
 test('optimistic mode layout holds while save is pending and restores the previous layout on failure',async()=>{
- const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.wireTeam=wireTeamWorkspace;return {name:'dsh-ui-stronger',inject:");
+ const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.TeamPortal=TeamWorkspacePortal;return {name:'dsh-ui-stronger',inject:");
  const states=[],listeners=new Map(),calls=[],cleanup=[];let cursor=0,rendered=false,component;
- const fakeReact={useRef:value=>({current:value}),createElement:(type,props,...children)=>({type,props:{...props,children}}),Fragment:'fragment',useState(initial){const index=cursor++;if(!(index in states))states[index]=typeof initial==='function'?initial():initial;return[states[index],value=>{states[index]=typeof value==='function'?value(states[index]):value;}];},useCallback:fn=>fn,useEffect(callback){if(!rendered)cleanup.push(callback());}};
- const win={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?fakeReact:{})},addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:name=>listeners.delete(name)};
+ const fakeReact={useRef:value=>({current:value}),createElement:(type,props,...children)=>({type,props:{...props,children}}),Fragment:'fragment',useState(initial){const index=cursor++;if(!(index in states))states[index]=index===1?{}:typeof initial==='function'?initial():initial;return[states[index],value=>{states[index]=typeof value==='function'?value(states[index]):value;}];},useLayoutEffect(){},useCallback:fn=>fn,useEffect(callback){if(!rendered)cleanup.push(callback());}};
+ const win={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?fakeReact:id==='react-dom'?{createPortal:element=>element}:{})},addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:name=>listeners.delete(name)};
  vm.runInNewContext(source,{window:win,document:{hidden:false},setInterval:()=>1,clearInterval(){},AbortController,AbortSignal,setTimeout,clearTimeout});
  const ctx={connection:{rpc:{call:()=>new Promise(resolve=>calls.push(resolve))}},effect:callback=>cleanup.push(callback()),slots:{entriesOfSlot:()=>[{options:{id:'native'},component:()=>null}],subscribe:()=>()=>{},register(_options,fn){component=fn;return()=>{};}}};
- win.wireTeam(ctx);const render=()=>{cursor=0;const value=component({sessionId:'one'});rendered=true;return value;};render();
- listeners.get('ui-stronger-mode-change')({detail:{sessionId:'one',presetId:'team',pending:true}});assert.equal(render().props.data.requested,true);assert.equal(calls.length,1);
- calls[0]({ok:true,value:{requested:false}});await new Promise(resolve=>setImmediate(resolve));assert.equal(render().props.data.requested,true);
- listeners.get('ui-stronger-mode-change')({detail:{sessionId:'one',presetId:'standard'}});assert.equal(render().props.data.requested,false);assert.equal(calls.length,2);
+ component=win.TeamPortal;const render=()=>{cursor=0;const value=component({sessionId:'one',ctx});rendered=true;return value;};render();
+ listeners.get('ui-stronger-mode-change')({detail:{sessionId:'one',presetId:'team',pending:true}});assert.equal(Boolean(render().props.children[1]?.props.data.requested),true);assert.equal(calls.length,1);
+ calls[0]({ok:true,value:{requested:false}});await new Promise(resolve=>setImmediate(resolve));assert.equal(Boolean(render().props.children[1]?.props.data.requested),true);
+ listeners.get('ui-stronger-mode-change')({detail:{sessionId:'one',presetId:'standard'}});assert.equal(Boolean(render().props.children[1]?.props.data.requested),false);assert.equal(calls.length,2);
  for(const off of cleanup.reverse())off?.();
 });
 
@@ -68,18 +68,16 @@ test('ordinary, loading and ready team layouts keep the native conversation at t
  assert.equal(ordinary.props.className,'zs-team-layout-idle');assert.equal(ready.props.className,'zs-team-workspace');
 });
 
-test('team enhancement wraps the full native conversation shell and preserves its slot contracts',async()=>{
- const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.wireTeam=wireTeamWorkspace;return {name:'dsh-ui-stronger',inject:");
- const children={'conversation.header':{kind:'single',scope:'session-maybe'}},store={},inject=()=>({native:true}),Original=()=>null;
- const entry={options:{priority:0},children,component:Original,store,inject,locale:'native-conversation'};
- const cleanup=[],queries=[];let options,component,calls=0;
- const fakeReact={useRef:value=>({current:value}),createElement:(type,props,...items)=>({type,props:{...props,children:items}}),Fragment:'fragment',useState:initial=>[initial,()=>{}],useCallback:fn=>fn,useEffect:fn=>cleanup.push(fn())};
- const win={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?fakeReact:{})},addEventListener(){},removeEventListener(){}};
- vm.runInNewContext(source,{window:win,document:{hidden:false},setInterval:()=>1,clearInterval(){},AbortController,AbortSignal,setTimeout,clearTimeout});
- const ctx={effect:fn=>cleanup.push(fn()),connection:{rpc:{call:()=>{calls++;}}},slots:{entriesOfSlot:name=>{queries.push(name);return name==='main.conversation'?[entry]:[];},subscribe:name=>{assert.equal(name,'main.conversation');return()=>{};},register:(value,renderer)=>{options=value;component=renderer;return()=>{};}}};
- win.wireTeam(ctx);assert.deepEqual(queries,['main.conversation']);assert.equal(options.name,'main.conversation');assert.equal(options.children,children);assert.equal(options.id,'ui-stronger-team-workspace');assert.equal(options.store,store);assert.equal(options.inject,inject);assert.equal(options.locale,entry.locale);
- const rendered=component({sessionId:undefined,renderSlot:()=>null});assert.equal(calls,0,'blank workspace must not query a nonexistent session');assert.equal(rendered.props.children[0].type,Original);
- for(const off of cleanup.reverse())off?.();
+test('team view keeps native child declarations owned by the host',async()=>{
+ const source=await readFile(new URL('../lib/client.js',import.meta.url),'utf8');
+ assert.doesNotMatch(source,/function wireTeamWorkspace|children:entry\.children/);
+ assert.doesNotMatch(source,/name:'main\.conversation'/);
+ assert.match(source,/register\('conversation\.header\.leading',props=>h\(TeamWorkspacePortal/);
+ assert.match(source,/root\.querySelector\('\[data-conversation-session\]'/);
+ assert.match(source,/ReactDOM\.createPortal\(h\(TeamWorkspace/);
+ assert.match(source,/contentObserver\.disconnect\(\);target\.remove\(\)/);
+ assert.match(source,/root\.classList\.remove\('zs-team-native-root'\)/);
+ assert.match(source,/generation\+\+;request\?\.abort\(\);pending=false;setMode/);
 });
 
 test('team roster uses an independent left column and native chat owns its composer',async()=>{
