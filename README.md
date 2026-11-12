@@ -15,7 +15,7 @@ dsh plugin --profile desktop add <归档的绝对路径>
 也可直接安装当前预构建包：
 
 ```powershell
-dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.16/dsh-ui-stronger-0.19.16.tgz
+dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.17/dsh-ui-stronger-0.19.17.tgz
 ```
 
 安装后正常重启 DSH。依赖仍从 npm 解析，并非完全离线。已有本机设置保留。
@@ -525,3 +525,11 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 - 清除当前源码中的早期外部技能管理设计引用。源码、依赖、工作流和测试文件完成逐文件静态清单检查，运行依赖没有该项目。重实现范围包括技能元数据查询、注册同步、刷新驱动和管理列表。
 
 310项回归通过。新增检查验证目录查询不会序列化整个工作区、默认摘要条数、普通记忆不改变技能修订号、无变化设置不写盘。没有使用真实账单测量Token节省比例。视频附件尚未解析，正式桌面和微信媒体实机验收仍待完成。
+
+## 0.19.17 正式宿主团队视图挂载修复
+
+- 修正原生 StoredEntry 子插槽声明的读取位置。会话包装保留 entry.children，避免头部插槽声明丢失而回退到原生视图。
+- 包装使用独立标识并保留原生 select/inject/store/locale，退出插件时恢复原生结构。
+- 回归夹具改用真实宿主字段结构，补验子插槽声明与包装标识。选择团队模式立即呈现左侧主协调员和成员列表、右侧原生对话与输入区域，切换保留未发送草稿。
+
+310项回归通过。生产组件、实际后端和原生菜单/会话布局在修正后的 StoredEntry 结构下完成隔离点击验证，覆盖空白与已有对话的切换及草稿保留。正式Windows窗口仍需加载新版后复验，未声称正式桌面端到端已通过。

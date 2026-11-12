@@ -71,13 +71,13 @@ test('ordinary, loading and ready team layouts keep the native conversation at t
 test('team enhancement wraps the full native conversation shell and preserves its slot contracts',async()=>{
  const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.wireTeam=wireTeamWorkspace;return {name:'dsh-ui-stronger',inject:");
  const children={'conversation.header':{kind:'single',scope:'session-maybe'}},store={},inject=()=>({native:true}),Original=()=>null;
- const entry={options:{name:'main.conversation',children,priority:0},component:Original,store,inject,locale:'native-conversation'};
+ const entry={options:{priority:0},children,component:Original,store,inject,locale:'native-conversation'};
  const cleanup=[],queries=[];let options,component,calls=0;
  const fakeReact={useRef:value=>({current:value}),createElement:(type,props,...items)=>({type,props:{...props,children:items}}),Fragment:'fragment',useState:initial=>[initial,()=>{}],useCallback:fn=>fn,useEffect:fn=>cleanup.push(fn())};
  const win={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?fakeReact:{})},addEventListener(){},removeEventListener(){}};
  vm.runInNewContext(source,{window:win,document:{hidden:false},setInterval:()=>1,clearInterval(){},AbortController,AbortSignal,setTimeout,clearTimeout});
  const ctx={effect:fn=>cleanup.push(fn()),connection:{rpc:{call:()=>{calls++;}}},slots:{entriesOfSlot:name=>{queries.push(name);return name==='main.conversation'?[entry]:[];},subscribe:name=>{assert.equal(name,'main.conversation');return()=>{};},register:(value,renderer)=>{options=value;component=renderer;return()=>{};}}};
- win.wireTeam(ctx);assert.deepEqual(queries,['main.conversation']);assert.equal(options.name,'main.conversation');assert.equal(options.children,children);assert.equal(options.store,store);assert.equal(options.inject,inject);assert.equal(options.locale,entry.locale);
+ win.wireTeam(ctx);assert.deepEqual(queries,['main.conversation']);assert.equal(options.name,'main.conversation');assert.equal(options.children,children);assert.equal(options.id,'ui-stronger-team-workspace');assert.equal(options.store,store);assert.equal(options.inject,inject);assert.equal(options.locale,entry.locale);
  const rendered=component({sessionId:undefined,renderSlot:()=>null});assert.equal(calls,0,'blank workspace must not query a nonexistent session');assert.equal(rendered.props.children[0].type,Original);
  for(const off of cleanup.reverse())off?.();
 });
