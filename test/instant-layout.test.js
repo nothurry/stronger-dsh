@@ -82,7 +82,7 @@ test('team view keeps native child declarations owned by the host',async()=>{
 
 test('team roster uses an independent left column and native chat owns its composer',async()=>{
  const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.Team=TeamWorkspace;window.css=TEAM_CSS;return {name:'dsh-ui-stronger',inject:");
- const react={...React,useState:value=>[value,()=>{}],useEffect:()=>{}},win={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?react:{})}};
+ const react={...React,useState:value=>[value,()=>{}],useEffect:()=>{}},win={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?react:{Menu:props=>props.anchor})}};
  vm.runInNewContext(source,{window:win});
  const data={requested:true,coordinator:{},defaults:{},members:[{id:'a',name:'执行成员',identity:'执行',duties:'范围内操作'},{id:'b',name:'核验成员',identity:'核验',duties:'核验结果'}],timeline:{tasks:[],summary:{}},messages:[]};
  const element=win.Team({data,children:React.createElement('form',{'data-native-composer':true})});

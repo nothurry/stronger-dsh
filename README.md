@@ -15,7 +15,7 @@ dsh plugin --profile desktop add <归档的绝对路径>
 也可直接安装当前预构建包：
 
 ```powershell
-dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.19/dsh-ui-stronger-0.19.19.tgz
+dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.20/dsh-ui-stronger-0.19.20.tgz
 ```
 
 安装后正常重启 DSH。依赖仍从 npm 解析，并非完全离线。已有本机设置保留。
@@ -533,4 +533,13 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 - 团队视图通过原生头部扩展点挂载可卸载的侧栏，不接管或重复声明主会话插槽。原生对话、草稿和其他插件保持宿主生命周期。
 - 会话身份从所属会话容器读取，切换团队模式立即显示左侧主协调员与成员，点选成员显示详情。
 - 使用实际安装宿主的SlotCore验证旧声明必然失败、新扩展可注册和卸载。补测模式切换、过期响应、原生对话保留和清理行为。
+
+
+## 0.19.20 团队成员直接管理与原生对话
+
+- 主智能体与成员在左侧分区，主智能体可改名，每一行提供省略号菜单。成员可直接改名、编辑身份职责、选择模型与思考强度、删除，并可新增成员。
+- 删除使用原生风格确认框，有未完成任务的成员受到保护。支持空团队，再新增成员时保持独立编号与记忆边界。
+- 成员首条消息经受控队列建立独立子会话，已有子会话使用DSH原生conversation.content与chat视图，保留其输入能力、消息历史与插件扩展。选成员不触发模型请求。
+- 原生成员续聊计入统一在线上限，复用已有子会话，保留完成任务记录，拒绝离线或已移除身份。普通请求与历史回放不重复写入新任务。
+- 保持0.19.19启动修复，通过宿主真实插槽与生命周期激活、卸载验证。
 

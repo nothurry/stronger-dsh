@@ -210,6 +210,58 @@ test('the model can discover, edit and apply team configuration through the norm
  assert.match(f.activations[0].request.prompt[0].text,/focused source reader/);assert.equal(f.activations[0].request.agentOptions.model,'small');
  const childCatalog=await f.bots.execute({action:'catalog'},{agent:child});assert.equal(childCatalog.configuration,undefined);assert.equal(childCatalog.revision,undefined);
 }));
+
+test('coordinator and member names persist while identities and independent memory keep their keys',()=>fixture(async f=>{
+ await f.enter();await f.team.editMemory('main','team-executor',{operation:'remember',key:'fact',content:'A scoped fact'});
+ const value=config(f.team);value.coordinator.name='任务指挥';value.members[0].name='资料研究员';
+ await f.team.configure('main',value,f.team.session('main').revision);
+ assert.equal(f.team.session('main').coordinator.name,'任务指挥');assert.equal(f.team.memory('main','team-executor')[0].content,'A scoped fact');
+ const loaded=new TeamMode(f.dir,f.ctx,f.bots,f.workbench);await loaded.load();assert.equal(loaded.session('main').members[0].name,'资料研究员');await loaded.close();
+ value.coordinator.name='';await assert.rejects(f.team.configure('main',value,f.team.session('main').revision),/名称/);
+}));
+
+test('all idle members can be deleted without silently restoring default workers',()=>fixture(async f=>{
+ await f.enter();const value=config(f.team);value.members=[];
+ await f.team.configure('main',value,f.team.session('main').revision);assert.equal(f.team.profiles('main').length,0);
+ await assert.rejects(f.bots.execute({action:'spawn',profileId:'team-executor',task:'Should not run',acceptance:'Check'},f.exec),/不存在|离线/);assert.equal(f.activations.length,0);
+ const loaded=new TeamMode(f.dir,f.ctx,f.bots,f.workbench);await loaded.load();assert.equal(loaded.session('main').members.length,0);await loaded.close();
+ value.members=[{id:'new-worker',name:'新成员',identity:'Reader',duties:'Read and report',model:null,effort:null,enabled:true}];
+ await f.team.configure('main',value,f.team.session('main').revision);assert.equal(f.team.profiles('main')[0].id,'new-worker');
+}));
+
+test('legacy coordinator settings acquire a display name without changing saved model routing',()=>fixture(async f=>{
+ const value=config(f.team);value.coordinator.model={provider:'p',model:'main'};await f.team.configure('main',value,0);
+ const saved=JSON.parse(await readFile(f.team.file,'utf8'));delete saved.sessions.main.coordinator.name;await writeFile(f.team.file,JSON.stringify(saved));
+ const loaded=new TeamMode(f.dir,f.ctx,f.bots,f.workbench);await loaded.load();assert.equal(loaded.session('main').coordinator.name,'主智能体');assert.equal(loaded.session('main').coordinator.model.model,'main');await loaded.close();
+}));
+
+test('replayed completed native turns never create a new task or rewrite history',()=>fixture(async f=>{
+ await f.enter();const run=await f.bots.execute({action:'spawn',profileId:'team-executor',task:'Initial task',acceptance:'Check'},f.exec);
+ f.finish(run.childId);await f.bots.onEvent(f.sessions.get(run.childId),{type:'turn/end'});
+ const before=JSON.stringify(f.bots.tasks);await f.team.trackNativeTurn(f.sessions.get(run.childId));assert.equal(JSON.stringify(f.bots.tasks),before);
+}));
+
+test('native member follow-up reserves one existing child and preserves completed task history',()=>fixture(async f=>{
+ await f.enter();const run=await f.bots.execute({action:'spawn',profileId:'team-executor',task:'Initial task',acceptance:'Check'},f.exec);
+ f.finish(run.childId);await f.bots.onEvent(f.sessions.get(run.childId),{type:'turn/end'});
+ const before=structuredClone(f.bots.tasks.runs[0]),session=f.sessions.get(run.childId),log=session.snapshotEvents();
+ log.push({seq:log.length,type:'turn/start'});await f.bots.onEvent(session,log.at(-1));
+ assert.equal(f.bots.tasks.runs.length,2);assert.deepEqual(f.bots.tasks.runs[0],before);assert.equal(f.bots.tasks.runs[1].childId,run.childId);
+ await f.team.request(f.agents.get(run.childId),{provider:'p',model:'main',tools:[]});
+ const routed=JSON.stringify(f.bots.tasks);await f.team.request(f.agents.get(run.childId),{provider:'p',model:'main',tools:[]});assert.equal(JSON.stringify(f.bots.tasks),routed);
+ assert.equal(f.activations.length,1);assert.equal(f.bots.timeline('main').summary.running,1);
+ f.finish(run.childId);await f.bots.onEvent(session,{type:'turn/end'});assert.equal(f.bots.tasks.runs[1].done,true);assert.deepEqual(f.bots.tasks.runs[0],before);
+}));
+
+test('native member follow-up respects online limits and refuses removed identities',()=>fixture(async f=>{
+ await f.enter();const run=await f.bots.execute({action:'spawn',profileId:'team-verifier',task:'Initial check',acceptance:'Check'},f.exec);
+ f.finish(run.childId);await f.bots.onEvent(f.sessions.get(run.childId),{type:'turn/end'});
+ const log=f.sessions.get(run.childId).snapshotEvents();log.push({seq:log.length,type:'turn/start'});
+ await f.bots.configurePolicy({sessionId:'main',revision:f.bots.state.revision,enabled:true,maxParallel:1,maxTasks:8});
+ await assert.rejects(f.team.trackNativeTurn(f.sessions.get(run.childId)),/离线|移除/);assert.equal(f.bots.tasks.runs.length,1);
+ const value=config(f.team);value.members=value.members.filter(row=>row.id!=='team-verifier');await f.team.configure('main',value,f.team.session('main').revision);
+ await assert.rejects(f.team.request(f.agents.get(run.childId),{provider:'p',model:'main',tools:[]}),/离线|移除/);
+}));
 async function client(extra={}){
  const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.qa={callControl,TEAM_CSS};return {name:'dsh-ui-stronger',inject:");
  const window={location:{protocol:'dsh-app:'},__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?React:{})}};
