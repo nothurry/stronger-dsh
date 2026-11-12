@@ -26,5 +26,5 @@ test('skill search separates imported skills and builtins, preserves actions and
  const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.SkillLibraryControls=SkillLibraryControls;return {name:'dsh-ui-stronger',inject:");const win={__ModuleLoader__:{load:x=>x.factory(id=>id==='react'?React:{})}};vm.runInNewContext(source,{window:win});
  const skills=[{name:'local-plan',description:'Plan a learning path',origin:'library',enabled:true},{name:'context-handoff',description:'Save a task handoff',enabled:false}];
  const panel=query=>renderToStaticMarkup(React.createElement(win.SkillLibraryControls,{skills,query,busy:false,onQuery(){},onReload(){},onToggle(){}}));
- const full=panel('');assert.match(full,/本机导入 · 1/);assert.match(full,/内置技能 · 1/);assert.match(full,/刷新目录/);assert.match(full,/aria-checked="true"/);const filtered=panel('LOCAL learning');assert.match(filtered,/local-plan/);assert.doesNotMatch(filtered,/context-handoff/);assert.match(filtered,/内置技能 · 0/);
+ const full=panel('');assert.match(full,/本机导入/);assert.match(full,/内置/);assert.match(full,/刷新目录/);assert.match(full,/aria-checked="true"/);const filtered=panel('LOCAL learning');assert.match(filtered,/local-plan/);assert.doesNotMatch(filtered,/context-handoff/);assert.match(filtered,/1 个技能/);
 });

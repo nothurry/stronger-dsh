@@ -192,7 +192,7 @@ test('prepared parent sessions can cancel queued tasks and resolve the same pare
  await f.bots.execute({action:'dispatch',key:'cancel',tasks:[task('a'),task('b')]},f.exec);
  const [running,queued]=f.bots.tasks.runs;f.agents.delete('main');let resumed=0,interrupted;
  f.services.sessionController={resolveAgent:async id=>{assert.equal(id,'main');resumed++;return {agent:f.parent};}};
- f.services.subagents.interrupt=(id,parent)=>{interrupted={id,parent};};
+ f.services.subagents.interrupt=(id,parent)=>{interrupted={id,parent:parent.agent};};
  await f.bots.cancelTask('main',queued.id);assert.equal(queued.id,f.bots.tasks.runs[1].id);assert.equal(f.bots.tasks.runs[1].status,'cancelled');assert.equal(resumed,0);
  await f.bots.cancelTask('main',running.id);assert.equal(resumed,1);assert.equal(interrupted.id,running.childId);assert.equal(interrupted.parent,f.parent);
  await assert.rejects(f.bots.cancelTask('main',running.id,AbortSignal.abort()));

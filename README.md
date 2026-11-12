@@ -15,7 +15,7 @@ dsh plugin --profile desktop add <归档的绝对路径>
 也可直接安装当前预构建包：
 
 ```powershell
-dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.15/dsh-ui-stronger-0.19.15.tgz
+dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.16/dsh-ui-stronger-0.19.16.tgz
 ```
 
 安装后正常重启 DSH。依赖仍从 npm 解析，并非完全离线。已有本机设置保留。
@@ -232,7 +232,6 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 - 技能页分组显示内置与本机导入，支持按名称或用途搜索、独立开关及刷新目录。刷新后原生技能目录同步更新，保留此前的开关选择。导入文件异常时显示错误并停止提供异常目录的技能。
 - 技能摘要保留来源分类，更新后旧分页游标失效。模型按需通过原生 skill 工具读取正文。
 
-160 项回归通过。布局在 420px 测试视口检查，统计文字完整并可换行。设计借鉴 [dsh-ops 的按需披露与独立控制思路](https://github.com/T-Auto/dsh-ops/blob/main/README.zh.md)。
 
 ## 0.18.22
 
@@ -517,3 +516,12 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 - 团队派发必须明确成员与验收条件。续接采用任务消息边界，保留各轮结果；投递未知继续占用成员名额并等待核对，避免重复创建。
 
 308项回归通过。生产组件、实际后端与原生菜单/会话布局完成隔离界面检查，覆盖模式、成员消息和记忆、扩展页面、浅深色与窄窗口。正式Windows窗口截图连续超时，真实模型协作效果、私人语音桌宠和微信媒体收发尚未完成实机验收。
+
+## 0.19.16 技能链路重实现
+
+- 重写技能目录检索与原生注册同步，管理界面改为统一列表。查询只构造技能元数据，任务默认返回3条摘要，正文仍由宿主按需加载。
+- 技能有独立修订号。普通记忆与人设更新不刷新技能目录，未改变的设置不重写工作区或轮换备份。
+- 保留已有本机技能、启停设置、确认后发布的草稿、作用域隔离和旧数据格式。修复原生子智能体停止接口的权限对象格式。
+- 清除当前源码中的早期外部技能管理设计引用。源码、依赖、工作流和测试文件完成逐文件静态清单检查，运行依赖没有该项目。重实现范围包括技能元数据查询、注册同步、刷新驱动和管理列表。
+
+310项回归通过。新增检查验证目录查询不会序列化整个工作区、默认摘要条数、普通记忆不改变技能修订号、无变化设置不写盘。没有使用真实账单测量Token节省比例。视频附件尚未解析，正式桌面和微信媒体实机验收仍待完成。
