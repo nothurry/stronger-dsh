@@ -93,3 +93,12 @@ test('team roster uses an independent left column and native chat owns its compo
  assert.doesNotMatch(win.css,/min-height:180px|max-height:38vh|\.zs-team-member\{animation:zs-/);
  assert(win.css.includes('var(--dsw-alias-label-secondary'));assert(win.css.includes('var(--dsw-alias-bg-base'));
 });
+
+test('team label follows the requested view while execution is still using standard composition',async()=>{
+ const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.Picker=PresetPicker;return {name:'dsh-ui-stronger',inject:");
+ let index=0;const react={...React,useState:initial=>[++index===5?{requested:'team',current:'standard',pending:false}:initial,()=>{}],useEffect(){},useRef:value=>({current:value})};
+ const win={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?react:{Menu:props=>props.anchor})}};
+ vm.runInNewContext(source,{window:win});
+ const result=win.Picker({ctx:{},sessionId:'one',current:'standard',label:'标准模式'});
+ const html=renderToStaticMarkup(result);assert(html.includes('团队模式'));assert(!html.includes('>标准模式<'));
+});

@@ -15,7 +15,7 @@ dsh plugin --profile desktop add <归档的绝对路径>
 也可直接安装当前预构建包：
 
 ```powershell
-dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.17/dsh-ui-stronger-0.19.17.tgz
+dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.18/dsh-ui-stronger-0.19.18.tgz
 ```
 
 安装后正常重启 DSH。依赖仍从 npm 解析，并非完全离线。已有本机设置保留。
@@ -533,3 +533,11 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 - 回归夹具改用真实宿主字段结构，补验子插槽声明与包装标识。选择团队模式立即呈现左侧主协调员和成员列表、右侧原生对话与输入区域，切换保留未发送草稿。
 
 310项回归通过。生产组件、实际后端和原生菜单/会话布局在修正后的 StoredEntry 结构下完成隔离点击验证，覆盖空白与已有对话的切换及草稿保留。正式Windows窗口仍需加载新版后复验，未声称正式桌面端到端已通过。
+
+## 0.19.18 团队视图与模式标签一致性
+
+- 包含0.19.17的正式StoredEntry.children挂载修复，保留原生头部声明和会话草稿。
+- 模式标签始终使用用户已选的requested模式，保存期间停止旧状态读取，保存成功后使旧请求失效，避免界面已切换而标签退回标准模式。
+- 选择团队立即显示左侧主协调员与成员、右侧对话和底部输入。执行中的任务继续保留，运行配置按交接规则生效。
+
+311项回归通过。修正宿主真实字段结构后的隔离界面已验证空白/已有对话切换与未发送草稿保留。正式Windows端需加载新前端后复验，截图证据来自生产组件隔离页面。
