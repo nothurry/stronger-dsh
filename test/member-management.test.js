@@ -6,7 +6,7 @@ import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 
 async function client(react=React){
- const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.qa={TeamWorkspace,TeamRowMenu,TeamConfiguration,TeamMemberConversation,NativeTeamMemberChat};return {name:'dsh-ui-stronger',inject:");
+ const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.qa={TeamWorkspace,TeamRowMenu,TeamConfiguration,TeamMemberConversation,NativeTeamMemberChat,teamActivity};return {name:'dsh-ui-stronger',inject:");
  const window={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?react:{Menu:props=>props.anchor,Modal:props=>React.createElement('section',null,props.children,props.footer),Button:'button'})}};
  vm.runInNewContext(source,{window,structuredClone,crypto,AbortController});return window.qa;
 }
@@ -59,4 +59,18 @@ test('first member message uses independent controls and keeps the model label o
  assert.doesNotMatch(html,/GRgSLq_/);assert.match(html,/class="zs-team-member-controls"/);assert.match(html,/class="zs-team-member-model"/);
  assert.match(source,/\.zs-team-member-model\{[^}]*white-space:nowrap/);
  assert.match(source,/\.zs-team-member-controls>button\.zs-team-member-send\{[^}]*flex:0 0 30px/);
+});
+
+test('per-agent status follows actual native work and pending approval without marking an idle coordinator busy',async()=>{
+ const qa=await client();
+ assert.equal(qa.teamActivity({running:false},null).label,'待机');
+ assert.equal(qa.teamActivity({running:true},null).label,'工作中');
+ assert.equal(qa.teamActivity({running:true,pendingInteraction:{key:'approval'}},null).label,'待审核');
+ assert.equal(qa.teamActivity(undefined,{done:false,status:'running'},true,{pending:true}).label,'审查中');
+ assert.equal(qa.teamActivity(undefined,{done:true,status:'completed',requireReview:true}).label,'待验收');
+ assert.equal(qa.teamActivity(undefined,{done:false,status:'running'},true,{decision:'deny'}).label,'审查拒绝');
+ const data={sessionId:'main',requested:true,coordinator:{name:'主控'},defaults:{},members:[{id:'worker',name:'资料研究员',enabled:true}],timeline:{tasks:[{profile:{id:'worker'},childId:'child',status:'running',done:false}],summary:{running:1}},messages:[]};
+ const html=renderToStaticMarkup(React.createElement(qa.TeamWorkspace,{data,liveStatuses:new Map([['main',{running:false}],['child',{running:true,pendingInteraction:{key:'approval'}}]])}));
+ assert.match(html,/>主控<\/strong><span[^>]*data-state="idle"/);
+ assert.match(html,/>资料研究员<\/strong><span[^>]*data-state="approval"/);
 });

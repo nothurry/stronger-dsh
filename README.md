@@ -15,7 +15,7 @@ dsh plugin --profile desktop add <归档的绝对路径>
 也可直接安装当前预构建包：
 
 ```powershell
-dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.21/dsh-ui-stronger-0.19.21.tgz
+dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.22/dsh-ui-stronger-0.19.22.tgz
 ```
 
 安装后正常重启 DSH。依赖仍从 npm 解析，并非完全离线。已有本机设置保留。
@@ -544,7 +544,7 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 - 保持0.19.19启动修复，通过宿主真实插槽与生命周期激活、卸载验证。
 
 
-## 0.19.21 成员发送框与兼容性修复
+## 0.19.22 成员发送框与兼容性修复
 
 - 首次成员消息输入框使用独立布局类，移除原生输入组件内部类的复用。模型标签保持横排，发送按钮固定尺寸，清除残留网格布局。
 - 界面贡献注册时避开已有同位置、同优先级的插件条目，卸载后保留原有贡献。
@@ -553,3 +553,11 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 
 
 新团队由用户新增子智能体。名单由用户维护，主智能体只能调度已有且启用的子智能体。原有团队名单继续保留，数量选择已移除。
+
+## 0.19.22 团队对话切换与交接修复
+
+- 模式切换自动保存任务进度，移除主模型确认交接的前置条件，兼容已有待确认记录。
+- 已打开的子智能体对话保持挂载，切换和查看详情时保留草稿、消息及原生会话引用。
+- 主智能体与子智能体名字右侧显示各自工作、审查和待审核状态。
+- 团队输入框按草稿与运行状态显示单个主要操作，保留原生快捷键与消息队列。
+

@@ -142,7 +142,7 @@ test('member progress is reported in stages, wakes timeline waiters and never fa
  await f.bots.execute({action:'report',stage:'done',summary:'Result prepared',evidence:['source.md:4']},exec);assert.equal(f.bots.timeline('main').tasks[0].done,false);assert.equal(f.bots.timeline('main').tasks[0].progress.length,3);
  f.finish(spawned.childId);await f.bots.onEvent(child.session,{type:'turn/end'});assert.equal(f.bots.timeline('main').tasks[0].done,true);
 }));
-test('switching out keeps running and queued tasks; returning requires a fresh complete handoff before admission',()=>fixture(async f=>{
+test('switching out preserves progress and returning admits existing tasks without a handoff confirmation',()=>fixture(async f=>{
  await f.enter();await f.bots.configurePolicy({sessionId:'main',revision:f.bots.state.revision,enabled:true,maxParallel:1,maxTasks:8});
  await f.bots.execute({action:'dispatch',key:'retained',tasks:[task('a'),task('b')]},f.exec);assert.equal(f.activations.length,1);
  await f.workbench.selectPreset('main','ptc');await f.workbench.applyPreset(f.parent);assert.equal(f.team.active('main'),true);
@@ -152,9 +152,22 @@ test('switching out keeps running and queued tasks; returning requires a fresh c
  const queuedId=f.bots.tasks.runs[1].id;f.events.push({seq:f.events.length,type:'user/message',data:{source:{kind:'user',rpcId:'continue'},content:[{type:'text',text:'Continue the retained scoped plan after checking its progress.'}]}});
  await f.workbench.selectPreset('main','team');
  f.events.push({seq:f.events.length,type:'user/message',data:{source:{kind:'user',rpcId:'switch-team'},content:[{type:'text',text:'Continue using the selected team mode.'}]}});
- await f.workbench.applyPreset(f.parent);assert.equal(f.activations.length,1);assert.match(f.team.guard({agent:f.parent,name:'read_file'}),/交接/);
- const handoff=await f.bots.execute({action:'handoff'},f.exec);assert.equal(handoff.tasks.length,2);await f.bots.execute({action:'acknowledge',digest:handoff.digest},f.exec);
+ await f.workbench.applyPreset(f.parent);assert.equal(f.activations.length,1);assert.equal(f.team.admission('main'),true);
+ assert.equal(f.team.guard({agent:f.parent,name:'workspace_team',arguments:{action:'advance'}}),undefined);
+ const handoff=await f.bots.execute({action:'handoff'},f.exec);assert.equal(handoff.tasks.length,2);assert.equal(handoff.required,false);
  await f.bots.execute({action:'advance'},f.exec);assert.equal(f.activations.length,2);assert.equal(f.bots.tasks.runs[1].id,queuedId);
+}));
+
+test('a saved unacknowledged checkpoint cannot block direct member messages or ordinary tools',()=>fixture(async f=>{
+ await f.enter();
+ await f.team.change('main',record=>{record.checkpoint={...f.team.capture('main'),acknowledged:false};});
+ assert.equal(f.team.admission('main'),true);
+ const result=await f.team.sendMember('main','team-executor','Read one scoped source','manual-no-handoff');
+ assert(result);assert.equal(f.activations.length,1);
+ await f.team.transition(f.parent,false);
+ await f.team.change('main',record=>{record.checkpoint.acknowledged=false;});
+ assert.equal(f.team.guard({agent:f.parent,name:'read_file'}),undefined);
+ assert.equal((await f.bots.execute({action:'catalog'},f.exec)).handoffRequired,false);
 }));
 test('progress changes invalidate a handoff digest and all pages must be read before acknowledgement',()=>fixture(async f=>{
  await f.enter();await f.bots.taskChange(state=>{for(let index=0;index<10;index++)state.runs.push({id:'saved-'+index,parent:'main',team:true,task:'Retained '+index,acceptance:'Check',status:'queued',done:false,budgetKey:'initial',profile:{id:'team-executor',name:'Executor'}});});
