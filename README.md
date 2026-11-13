@@ -15,7 +15,7 @@ dsh plugin --profile desktop add <归档的绝对路径>
 也可直接安装当前预构建包：
 
 ```powershell
-dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.20/dsh-ui-stronger-0.19.20.tgz
+dsh plugin --profile desktop add https://github.com/nothurry/stronger-dsh/releases/download/v0.19.21/dsh-ui-stronger-0.19.21.tgz
 ```
 
 安装后正常重启 DSH。依赖仍从 npm 解析，并非完全离线。已有本机设置保留。
@@ -543,3 +543,13 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 - 原生成员续聊计入统一在线上限，复用已有子会话，保留完成任务记录，拒绝离线或已移除身份。普通请求与历史回放不重复写入新任务。
 - 保持0.19.19启动修复，通过宿主真实插槽与生命周期激活、卸载验证。
 
+
+## 0.19.21 成员发送框与兼容性修复
+
+- 首次成员消息输入框使用独立布局类，移除原生输入组件内部类的复用。模型标签保持横排，发送按钮固定尺寸，清除残留网格布局。
+- 界面贡献注册时避开已有同位置、同优先级的插件条目，卸载后保留原有贡献。
+- 保留主智能体改名、主成员分区、每行省略号菜单、独立成员原生对话和统一人数限制。
+- 增加客户端操作与后端路由一致性检查、首次输入布局回归，并继续检查页面和交互。
+
+
+新团队由用户新增子智能体。名单由用户维护，主智能体只能调度已有且启用的子智能体。原有团队名单继续保留，数量选择已移除。

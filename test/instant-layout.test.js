@@ -84,9 +84,9 @@ test('team roster uses an independent left column and native chat owns its compo
  const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.Team=TeamWorkspace;window.css=TEAM_CSS;return {name:'dsh-ui-stronger',inject:");
  const react={...React,useState:value=>[value,()=>{}],useEffect:()=>{}},win={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?react:{Menu:props=>props.anchor})}};
  vm.runInNewContext(source,{window:win});
- const data={requested:true,coordinator:{},defaults:{},members:[{id:'a',name:'执行成员',identity:'执行',duties:'范围内操作'},{id:'b',name:'核验成员',identity:'核验',duties:'核验结果'}],timeline:{tasks:[],summary:{}},messages:[]};
+ const data={requested:true,coordinator:{},defaults:{},members:[{id:'a',name:'执行子智能体',identity:'执行',duties:'范围内操作'},{id:'b',name:'核验子智能体',identity:'核验',duties:'核验结果'}],timeline:{tasks:[],summary:{}},messages:[]};
  const element=win.Team({data,children:React.createElement('form',{'data-native-composer':true})});
- const html=renderToStaticMarkup(element);assert(html.includes('<aside'));assert(html.includes('aria-label="团队成员"'));assert.equal((html.match(/团队配置/g)??[]).length,1);assert.equal((html.match(/data-native-composer/g)??[]).length,1);
+ const html=renderToStaticMarkup(element);assert(html.includes('<aside'));assert(html.includes('aria-label="团队子智能体"'));assert.equal((html.match(/团队配置/g)??[]).length,1);assert.equal((html.match(/data-native-composer/g)??[]).length,1);
  assert.match(win.css,/grid-template-columns:clamp\(164px,21%,224px\) minmax\(0,1fr\)/);assert.match(win.css,/\.zs-team-roster\{grid-column:1;grid-row:1/);assert.match(win.css,/\.zs-team-coordinator\{grid-column:2/);
  assert.doesNotMatch(win.css,/min-height:180px|max-height:38vh|\.zs-team-member\{animation:zs-/);
  assert(win.css.includes('var(--dsw-alias-label-secondary'));assert(win.css.includes('var(--dsw-alias-bg-base'));

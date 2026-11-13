@@ -14,19 +14,19 @@ async function client(react=React){
 test('lead and members have separate labelled sections and independent row menus',async()=>{
  const qa=await client();const data={sessionId:'one',requested:true,coordinator:{name:'任务指挥'},defaults:{},members:[{id:'worker',name:'资料研究员',enabled:true}],timeline:{tasks:[],summary:{}},messages:[]};
  const html=renderToStaticMarkup(React.createElement(qa.TeamWorkspace,{data}));
- assert.match(html,/aria-label="主智能体"/);assert.match(html,/aria-label="子成员"/);
+ assert.match(html,/aria-label="主智能体"/);assert.match(html,/aria-label="子智能体"/);
  assert.match(html,/任务指挥的操作/);assert.match(html,/资料研究员的操作/);
- assert.match(html,/aria-label="添加成员"/);
- assert(html.indexOf('aria-label="主智能体"')<html.indexOf('aria-label="子成员"'));
+ assert.match(html,/aria-label="添加子智能体"/);
+ assert(html.indexOf('aria-label="主智能体"')<html.indexOf('aria-label="子智能体"'));
 });
 
 test('focused member editor preserves other members and exposes the chosen name field',async()=>{
  const qa=await client({...React,useEffect(){}});
  const data={sessionId:'one',revision:2,coordinator:{name:'任务指挥',model:null,effort:null,instructions:''},defaults:{model:null,effort:null},members:[{id:'a',name:'读资料',identity:'read',duties:'report',model:null,effort:null,enabled:true},{id:'b',name:'核验',identity:'verify',duties:'check',model:null,effort:null,enabled:true}]};
  const html=renderToStaticMarkup(React.createElement(qa.TeamConfiguration,{data,target:{memberId:'b',field:'name'},control:()=>new Promise(()=>{})}));
- assert.match(html,/value="核验"/);assert.doesNotMatch(html,/value="读资料"/);assert.doesNotMatch(html,/全体子成员默认设置/);
+ assert.match(html,/value="核验"/);assert.doesNotMatch(html,/value="读资料"/);assert.doesNotMatch(html,/全体子智能体默认设置/);
  const lead=renderToStaticMarkup(React.createElement(qa.TeamConfiguration,{data,target:{main:true,field:'name'},control:()=>new Promise(()=>{})}));
- assert.match(lead,/aria-label="主智能体名称"/);assert.doesNotMatch(lead,/aria-label="成员1名称"/);
+ assert.match(lead,/aria-label="主智能体名称"/);assert.doesNotMatch(lead,/aria-label="子智能体1名称"/);
 });
 
 test('member conversation delegates content and chat view to the native factory',async()=>{
@@ -49,4 +49,14 @@ test('an active child composer cannot inherit its blank parent hero minimum heig
  const source=await readFile(new URL('../lib/client.js',import.meta.url),'utf8');
  assert.match(source,/\.zs-team-native-chat \.an3WzG_body\[data-content-phase=active\] \.an3WzG_composerSeat\{flex:none!important;min-height:0!important/);
  assert.match(source,/\.zs-team-member-more svg\{width:18px!important;height:18px!important/);
+});
+
+test('first member message uses independent controls and keeps the model label on one line',async()=>{
+ const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.Composer=MemberComposer;return {name:'dsh-ui-stronger',inject:");
+ const window={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?React:{})}};vm.runInNewContext(source,{window});
+ const member={id:'worker',name:'执行子智能体',enabled:true},data={members:[member],defaults:{},coordinator:{},timeline:{policy:{maxParallel:2}}};
+ const html=renderToStaticMarkup(React.createElement(window.Composer,{member,data}));
+ assert.doesNotMatch(html,/GRgSLq_/);assert.match(html,/class="zs-team-member-controls"/);assert.match(html,/class="zs-team-member-model"/);
+ assert.match(source,/\.zs-team-member-model\{[^}]*white-space:nowrap/);
+ assert.match(source,/\.zs-team-member-controls>button\.zs-team-member-send\{[^}]*flex:0 0 30px/);
 });

@@ -46,7 +46,7 @@ test('lowering the session parallel limit preserves running workers and blocks n
  f.finish('child-1');await f.bots.onEvent(f.sessions.get('child-1'),{type:'turn/end'});assert.equal(f.specs.length,3);
  f.finish('child-2');await f.bots.onEvent(f.sessions.get('child-2'),{type:'turn/end'});assert.equal(f.specs.length,3);
  f.finish('child-3');await f.bots.onEvent(f.sessions.get('child-3'),{type:'turn/end'});assert.equal(f.specs.length,4);assert.equal(f.bots.timeline('parent').policy.maxParallel,1);
- await assert.rejects(f.enable({maxParallel:5}));assert.equal(f.bots.policy('parent').maxParallel,1);
+ await assert.rejects(f.enable({maxParallel:25}));assert.equal(f.bots.policy('parent').maxParallel,1);
 }));
 
 test('autonomy defaults off, only owner configuration enables one session and persists across restart',()=>fixture(async f=>{assert.equal(f.bots.policy('parent').enabled,false);await assert.rejects(f.bots.execute({action:'spawn',task:'Read'},f.exec),/关闭/);await assert.rejects(f.bots.execute({action:'teamPolicy',enabled:true},f.exec));await assert.rejects(f.enable({revision:99}));await f.enable();assert.equal(f.bots.policy('other').enabled,false);const next=await f.reload();assert.equal(next.policy('parent').enabled,true);assert.match(next.context('parent'),/dispatch/);}));
