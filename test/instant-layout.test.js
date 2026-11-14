@@ -5,6 +5,42 @@ import vm from 'node:vm';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 
+async function childConversationQA(){
+ const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.childQA={TeamMemberConversation,teamActivity};return {name:'dsh-ui-stronger',inject:");
+ const window={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?React:{})}};
+ vm.runInNewContext(source,{window});
+ return window.childQA;
+}
+
+test('running child conversation keeps its composer active without a parent availability field',async()=>{
+ const qa=await childConversationQA();
+ for(const session of [
+  {blank:false,running:true,openState:'open'},
+  {blank:true,running:true,openState:'loading'},
+  {blank:false,running:false,awaitingFirstTurn:false,openState:'open'}
+ ]){
+  const rendered=qa.TeamMemberConversation({sessionId:'child',useSession:select=>select({...session,subagent:{address:{mode:'continuable'}}}),useConversation:select=>select({activeTargets:new Set()}),useSessions:select=>select({byId:{child:{blank:false}}}),renderFactorySlot:(name,props)=>({name,props})});
+  assert.equal(rendered.name,'conversation.content');
+  assert.equal(rendered.props.phase,'active');
+  assert.equal(rendered.props.hero,false);
+ }
+});
+
+test('child conversation only hides the composer while an unopened blank chat actually loads',async()=>{
+ const qa=await childConversationQA();
+ for(const [openState,summaryBlank,phase]of [['loading',false,'settling'],['loading',true,'hero'],['open',true,'hero']]){
+  const rendered=qa.TeamMemberConversation({sessionId:'child',useSession:select=>select({blank:true,running:false,openState,subagent:{address:{mode:'continuable'}}}),useConversation:select=>select({activeTargets:new Set()}),useSessions:select=>select({byId:{child:{blank:summaryBlank}}}),renderFactorySlot:(_name,props)=>props});
+  assert.equal(rendered.phase,phase);
+ }
+});
+
+test('native dispatch failure is visible beside the child name',async()=>{
+ const qa=await childConversationQA();
+ const status=qa.teamActivity(undefined,{done:true,status:'dispatch-failed'});
+ assert.equal(status.state,'error');
+ assert.equal(status.label,'需处理');
+});
+
 test('mode selection changes layout before the next response and ignores a stale in-flight read',async()=>{
  const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.TeamPortal=TeamWorkspacePortal;return {name:'dsh-ui-stronger',inject:");
  const states=[],listeners=new Map(),calls=[],cleanup=[];let cursor=0,rendered=false,component;
