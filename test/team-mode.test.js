@@ -93,14 +93,14 @@ test('an unknown initial activation occupies its slot until its native result ca
  await f.bots.cancelTask('main',f.bots.tasks.runs[0].id);assert.equal(interrupted,reserved);
 }));
 
-test('all user-configured subagents are available and removal waits for unfinished assignments',()=>fixture(async f=>{
+test('removing a busy member interrupts its active work and cancels its queue',()=>fixture(async f=>{
  const value=config(f.team);value.members.push({...value.members[0],id:'third',name:'Third'});await f.team.configure('main',value,0);await f.enter();
  assert.equal(f.bots.policy('main').maxParallel,3);assert.equal(f.team.profiles('main').length,3);
  await assert.rejects(f.bots.execute({action:'spawn',profileId:'unknown',task:'Work',acceptance:'Check'},f.exec),/不存在/);
  await f.bots.execute({action:'spawn',profileId:'team-executor',task:'Work',acceptance:'Check'},f.exec);
  const changed=config(f.team);changed.members=changed.members.filter(row=>row.id!=='team-executor');
- await assert.rejects(f.team.configure('main',changed,f.team.session('main').revision),/未完成任务/);
- f.finish('child-1');await f.bots.onEvent(f.sessions.get('child-1'),{type:'turn/end'});await f.team.configure('main',changed,f.team.session('main').revision);
+ let interrupted;f.services.subagents.interrupt=id=>{interrupted=id;f.finish(id);};
+ await f.team.configure('main',changed,f.team.session('main').revision);assert.equal(interrupted,'child-1');assert.equal(f.bots.tasks.runs[0].status,'cancelled');
  assert(!f.team.session('main').members.some(row=>row.id==='team-executor'));
 }));
 
@@ -362,3 +362,52 @@ test('team workspace styles preserve the embedded native conversation buttons an
  assert(!TEAM_CSS.includes('.zs-team-coordinator strong{'));
  assert(!TEAM_CSS.includes('.zs-team-coordinator small,'));
 });
+
+
+test('current host activation receives flat arguments and a stable native member name',()=>fixture(async f=>{
+ await f.enter();const original=f.services.subagents.startActivation;
+ f.services.subagents.rootOf=()=>f.parent;
+ f.services.subagents.startActivation=async spec=>{assert.equal(spec.parent,f.parent);assert.equal(spec.request,undefined);assert.equal(spec.name,'team-executor');assert(Array.isArray(spec.prompt));return original({...spec,request:spec});};
+ await f.bots.execute({action:'spawn',...task('flat')},f.exec);assert.equal(f.activations.length,1);
+}));
+
+test('native projection fallback recovers absent cancellation and releases its observation',()=>fixture(async f=>{
+ await f.enter();f.services.subagents.startActivation=async()=>{throw Error('Startup failure');};
+ await assert.rejects(f.bots.execute({action:'spawn',...task('absent')},f.exec));let disposed=0;
+ f.services.sessionQuery={observeSession:async()=>({projections:{values:{subagentCatalog:[]}},[Symbol.dispose](){disposed++;}})};
+ f.services.subagents.interrupt=()=>{};await f.bots.cancelTask('main',f.bots.tasks.runs[0].id);
+ assert.equal(f.bots.tasks.runs[0].status,'cancelled');assert.equal(f.bots.tasks.runs[0].done,true);assert(disposed>0);
+}));
+
+test('four-member model configuration accepts embedded matching revision and a members-only patch',()=>fixture(async f=>{
+ await f.enter();const members=[...config(f.team).members,...[3,4].map(n=>({...config(f.team).members[0],id:'member-'+n,name:'Member '+n}))];
+ const revision=f.team.session('main').revision;await f.team.execute({action:'configure_team',revision,configuration:{members,revision}},f.exec);
+ assert.equal(f.team.session('main').members.length,4);
+ await assert.rejects(f.team.execute({action:'configure_team',revision:0,configuration:{members,revision:1}},f.exec),/版本不一致/);
+}));
+
+test('failed interruption preserves the member and reports the actual interruption error',()=>fixture(async f=>{
+ await f.enter();await f.bots.execute({action:'spawn',...task('busy')},f.exec);f.services.subagents.interrupt=()=>{throw Error('Interrupt transport failed');};
+ const next=config(f.team);next.members=next.members.filter(row=>row.id!=='team-executor');
+ await assert.rejects(f.team.configure('main',next,f.team.session('main').revision),/Interrupt transport failed/);
+ assert(f.team.profiles('main').some(row=>row.id==='team-executor'));
+}));
+
+
+test('removing a member cancels queued messages without activating another child',()=>fixture(async f=>{
+ await f.enter();await f.bots.execute({action:'dispatch',key:'queue-delete',tasks:[task('first'),task('second')]},f.exec);
+ f.services.subagents.interrupt=id=>f.finish(id);
+ const next=config(f.team);next.members=next.members.filter(row=>row.id!=='team-executor');
+ await f.team.configure('main',next,f.team.session('main').revision);
+ assert.equal(f.activations.length,1);assert(f.bots.tasks.runs.every(row=>row.done&&row.status==='cancelled'));
+}));
+
+test('deletion aborts an in-flight activation before removing its member',()=>fixture(async f=>{
+ await f.enter();let admitted;const ready=new Promise(resolve=>{admitted=resolve;});
+ f.services.subagents.startActivation=spec=>new Promise((resolve,reject)=>{admitted();spec.signal.addEventListener('abort',()=>reject(spec.signal.reason),{once:true});});
+ f.services.subagents.interrupt=()=>{};f.services.subagents.listChildren=async()=>[];
+ const starting=f.bots.execute({action:'spawn',...task('starting-delete')},f.exec);const rejected=assert.rejects(starting);await ready;
+ const next=config(f.team);next.members=next.members.filter(row=>row.id!=='team-executor');
+ await f.team.configure('main',next,f.team.session('main').revision);await rejected;
+ assert.equal(f.bots.tasks.runs[0].done,true);assert.equal(f.bots.tasks.runs[0].status,'cancelled');assert.equal(f.team.profiles('main').length,1);
+}));

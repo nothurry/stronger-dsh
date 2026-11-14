@@ -1,4 +1,4 @@
-# Release 0.19.25: session tools, shared memory and native browser evidence.
+# Release 0.19.26: session tools, shared memory and native browser evidence.
 name: Publish audited release
 on:
   workflow_dispatch:
