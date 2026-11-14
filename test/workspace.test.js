@@ -55,6 +55,12 @@ test('review parser rejects duplicates, high allow, tool calls and incomplete ou
  assert.throws(()=>parseReview('{"risk":"high","decision":"allow","reason":"yes"}'));assert.throws(()=>parseReview('{"risk":"low","decision":"deny","decision":"allow","reason":"x"}'));await assert.rejects(readReview((async function*(){yield {type:'text-delta',index:0,text:'{}'};})()));await assert.rejects(readReview((async function*(){yield {type:'tool-call-delta'};})()));
  const s=reviewSnapshot({agent:{session:sessionFixture()},name:'shell',rootCallId:'call',arguments:{cmd:'npm test'}},'/project');assert.equal(s.payload.history[0].role,'human-instruction');assert.equal(s.payload.history[1].role,'fact');assert.equal(s.payload.action.arguments.cmd,'npm test');
 });
+
+test('review terminal failures preserve the real cause, redact bearer tokens and never accept truncated approvals',async()=>{
+ const stream=reason=>(async function*(){yield {type:'finish',reason};})();
+ await assert.rejects(readReview(stream({kind:'error',failure:{code:'INVALID_REQUEST',message:'unsupported temperature Bearer hidden-secret'}})),error=>error.message.includes('INVALID_REQUEST')&&error.message.includes('unsupported temperature')&&!error.message.includes('hidden-secret'));
+ await assert.rejects(readReview((async function*(){yield {type:'text-delta',index:0,text:'{"decision":"allow","risk":"low","reason":"ok"}'};yield {type:'finish',reason:{kind:'max-tokens'}};})()),/输出达到上限/);
+});
 test('large reference data cannot displace the newest human restriction; incomplete authorization is flagged',()=>{
  const session=sessionFixture(),events=session.snapshotEvents();events.splice(1,0,{seq:10,type:'user/message',data:{source:{kind:'knowledge'},content:[{type:'text',text:'reference '.repeat(8000)}]}});events.splice(2,0,{seq:11,type:'user/message',data:{source:{kind:'user',rpcId:'revocation'},content:[{type:'text',text:'Stop. Do not modify any files.'}]}});session.surface.nodes=[0,10,11];let snap=reviewSnapshot({agent:{session},name:'shell',rootCallId:'call',arguments:{cmd:'npm test'}},'/project');assert(snap.payload.history.some(x=>x.text==='Stop. Do not modify any files.'));assert.equal(snap.payload.historyTruncated,false);assert(snap.payload.history.find(x=>x.role==='fact').text.length<=1200);
  events[0].data.content[0].text='A'.repeat(41000);snap=reviewSnapshot({agent:{session},name:'shell',rootCallId:'call',arguments:{cmd:'npm test'}},'/project');assert(snap.payload.history.some(x=>x.text==='Stop. Do not modify any files.'));assert.equal(snap.payload.historyTruncated,true);

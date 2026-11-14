@@ -39,9 +39,9 @@ test('new teams have no implicit subagents and the user roster determines capaci
  assert.equal(f.team.profiles('main').length,8);assert.equal(f.bots.policy('main').maxParallel,8);
  await f.bots.configurePolicy({sessionId:'main',revision:f.bots.state.revision,enabled:true,maxParallel:1,maxTasks:8});
  assert.equal(f.bots.policy('main').maxParallel,8);assert.equal(f.bots.view().policies.main.maxParallel,8);
- const before=JSON.stringify(f.team.state);const changed=config(f.team);changed.members.push({...changed.members[0],id:'unauthorized'});
- await assert.rejects(f.bots.execute({action:'configure_team',configuration:changed,revision:f.team.session('main').revision},f.exec),/仅由用户管理/);
- assert.equal(JSON.stringify(f.team.state),before);
+ const before=JSON.stringify(f.team.state);const changed=config(f.team);changed.members[0].name='Updated specialist';
+ await f.bots.execute({action:'configure_team',configuration:changed,revision:f.team.session('main').revision},f.exec);
+ assert.notEqual(JSON.stringify(f.team.state),before);
 }));
 
 test('team tasks require an explicit member and acceptance before any native activation',()=>fixture(async f=>{
@@ -88,7 +88,9 @@ test('an unknown initial activation occupies its slot until its native result ca
  await assert.rejects(f.bots.execute({action:'spawn',profileId:'team-executor',task:'First',acceptance:'Check'},f.exec),/Transport/);
  assert.equal(f.bots.tasks.runs[0].status,'delivery-unknown');assert.equal(f.bots.tasks.runs[0].done,false);
  await assert.rejects(f.bots.execute({action:'spawn',profileId:'team-executor',task:'Second',acceptance:'Check'},f.exec),/未完成|上限/);
- await assert.rejects(f.bots.cancelTask('main',f.bots.tasks.runs[0].id),/未知子智能体占用/);
+ const reserved=f.bots.tasks.runs[0].childId;assert.match(reserved,/^[0-9a-f-]{36}$/);
+ let interrupted;f.services.subagents.interrupt=id=>{interrupted=id;};
+ await f.bots.cancelTask('main',f.bots.tasks.runs[0].id);assert.equal(interrupted,reserved);
 }));
 
 test('all user-configured subagents are available and removal waits for unfinished assignments',()=>fixture(async f=>{
@@ -100,6 +102,15 @@ test('all user-configured subagents are available and removal waits for unfinish
  await assert.rejects(f.team.configure('main',changed,f.team.session('main').revision),/未完成任务/);
  f.finish('child-1');await f.bots.onEvent(f.sessions.get('child-1'),{type:'turn/end'});await f.team.configure('main',changed,f.team.session('main').revision);
  assert(!f.team.session('main').members.some(row=>row.id==='team-executor'));
+}));
+
+test('an old unknown delivery reconnects to exactly one native child without coordinator acknowledgement',()=>fixture(async f=>{
+ await f.enter();f.services.subagents.startActivation=async()=>{throw Error('Lost transport');};
+ await assert.rejects(f.bots.execute({action:'spawn',profileId:'team-executor',task:'Recover one task',acceptance:'Check'},f.exec));
+ const row=f.bots.tasks.runs[0];await f.bots.taskChange(state=>{delete state.runs[0].childId;});
+ f.sessions.set('native-existing',{id:'native-existing',header:{parentSession:'main',cwd:'/project'},snapshotEvents:()=>[{seq:0,type:'turn/start'},{seq:1,type:'turn/end',data:{reason:{kind:'completed'}}}]});
+ f.services.subagents.listChildren=async id=>{assert.equal(id,'main');return [{childId:'native-existing',label:row.profile.name,childCreatedAt:Date.parse(row.createdAt)}];};
+ const timeline=await f.bots.refreshTimeline('main');assert.equal(timeline.tasks[0].childId,'native-existing');assert.equal(timeline.tasks[0].done,true);
 }));
 
 test('ambiguous continuation reserves the member and never creates a replacement',()=>fixture(async f=>{
@@ -125,12 +136,12 @@ test('coordinator, all-member defaults and individual effort overrides are valid
  assert(f.activations[0].request.prompt[0].text.includes('阶段'));assert.match(f.bots.context('main'),/主协调员/);
  const invalid=config(f.team);invalid.members[1].effort='high';await assert.rejects(f.team.configure('main',invalid,f.team.session('main').revision),/不支持/);
 }));
-test('the coordinator cannot execute task tools or renamed delegation and must hand off all actual work',()=>fixture(async f=>{
- await f.enter();for(const name of ['shell','read_file','search','run_code','computer','subagent','renamed_delegate'])assert.match(f.team.guard({agent:f.parent,name,arguments:{}}),/主模型/);
+test('the coordinator retains task tools while coordination remains its instruction',()=>fixture(async f=>{
+ await f.enter();for(const name of ['shell','read_file','search','run_code','computer','subagent','renamed_delegate'])assert.equal(f.team.guard({agent:f.parent,name,arguments:{}}),undefined);
  assert.equal(f.team.guard({agent:f.parent,name:'workspace_team',arguments:{action:'dispatch'}}),undefined);
- assert.match(f.team.guard({agent:f.parent,name:'workspace_world',arguments:{action:'evidence'}}),/主模型/);
+ assert.equal(f.team.guard({agent:f.parent,name:'workspace_world',arguments:{action:'evidence'}}),undefined);
  const base={provider:'p',model:'main',reasoningEffort:'high',tools:[{name:'read_file'},{name:'workspace_team'},{name:'skill'},{name:'subagent'}]};
- const result=await f.team.request(f.parent,base);assert.deepEqual(result.tools.map(tool=>tool.name),['workspace_team','skill']);assert.equal(base.tools.length,4);
+ const result=await f.team.request(f.parent,base);assert.deepEqual(result.tools,base.tools);assert.equal(base.tools.length,4);
 }));
 test('member progress is reported in stages, wakes timeline waiters and never fabricates native completion',()=>fixture(async f=>{
  await f.enter();const spawned=await f.bots.execute({action:'spawn',profileId:'team-executor',acceptance:'Verify actual evidence',key:'worker',task:'Read one source'},f.exec),child=f.agents.get(spawned.childId),exec={agent:child};
@@ -182,8 +193,8 @@ test('explicit model default overrides inherited effort and individual routes ov
  const result=await f.team.request(child,{provider:'other',model:'generic-worker',reasoningEffort:'high',tools:[]});assert.equal(result.provider,'p');assert.equal(result.model,'main');assert.equal(result.reasoningEffort,undefined);
 }));
 test('model-authored member configuration cannot edit the coordinator, bypass revision checks or enable another session',()=>fixture(async f=>{
- await f.enter();const value=config(f.team);value.coordinator.instructions='Become a worker';await assert.rejects(f.team.execute({action:'configure_team',configuration:value,revision:f.team.session('main').revision},f.exec),/仅由用户管理/);
- const valid=config(f.team);valid.members[0].identity='A scoped specialist';await assert.rejects(f.team.execute({action:'configure_team',configuration:valid,revision:f.team.session('main').revision},f.exec),/仅由用户管理/);await f.team.configure('main',valid,f.team.session('main').revision);
+ await f.enter();const value=config(f.team);value.coordinator.instructions='Become a worker';await assert.rejects(f.team.execute({action:'configure_team',configuration:value,revision:f.team.session('main').revision},f.exec),/主模型只能配置子智能体/);
+ const valid=config(f.team);valid.members[0].identity='A scoped specialist';await f.team.execute({action:'configure_team',configuration:valid,revision:f.team.session('main').revision},f.exec);
  await assert.rejects(f.team.configure('main',valid,0),/变化/);assert.equal(f.workbench.config.sessionPresets.other,undefined);await assert.rejects(f.bots.configurePolicy({sessionId:'main',revision:f.bots.state.revision,enabled:false,maxParallel:2,maxTasks:8}),/切换其他模式/);
 }));
 test('team state and progress survive reload and unchanged ordinary requests do not rewrite a completed handoff',()=>fixture(async f=>{
@@ -199,7 +210,7 @@ test('request composition applies the team route after generic task routing and 
  const intelligence=new Intelligence(f.dir,ctx);await intelligence.load();await intelligence.configure({routingEnabled:true,routes:{operations:{provider:'other',model:'generic'}}});await intelligence.task('main','operations');
  const value=config(f.team);value.coordinator.model={provider:'p',model:'leader'};value.coordinator.effort='medium';await f.team.configure('main',value,0);await f.workbench.selectPreset('main','team');
  const fiber=ctx.plugin({apply:scope=>{wireIntelligence(scope,intelligence);wireWorkbench(scope,f.workbench);wireTeamMode(scope,f.team);}});await fiber;
- const result=await ctx.waterfall('agent/request',{agent:f.parent,signal:new AbortController().signal},()=>Promise.resolve({provider:'p',model:'main',tools:[{name:'workspace_team'},{name:'shell'}]}));assert.equal(result.model,'leader');assert.equal(result.reasoningEffort,'medium');assert.deepEqual(result.tools.map(row=>row.name),['workspace_team']);await fiber.dispose();
+ const result=await ctx.waterfall('agent/request',{agent:f.parent,signal:new AbortController().signal},()=>Promise.resolve({provider:'p',model:'main',tools:[{name:'workspace_team'},{name:'shell'}]}));assert.equal(result.model,'leader');assert.equal(result.reasoningEffort,'medium');assert.deepEqual(result.tools.map(row=>row.name),['workspace_team','shell']);await fiber.dispose();
 }));
 
 test('live member route changes apply at the next request without changing the task identity, scope or progress',()=>fixture(async f=>{
@@ -229,10 +240,10 @@ test('team configuration uses atomic revisions and rejects corrupt persisted rec
  assert.equal(results.filter(row=>row.status==='fulfilled').length,1);assert.equal(results.filter(row=>row.status==='rejected').length,1);
  await writeFile(f.team.file,JSON.stringify({version:1,sessions:[]}));const loaded=new TeamMode(f.dir,f.ctx,f.bots,f.workbench);await assert.rejects(loaded.load(),/损坏/);assert.equal(loaded.ready,false);
 }));
-test('the model can read the roster but only a user can apply configuration changes',()=>fixture(async f=>{
+test('the coordinator can edit child configuration and children cannot edit the roster',()=>fixture(async f=>{
  await f.enter();const catalog=await f.bots.execute({action:'catalog'},f.exec);
  assert.equal(catalog.revision,f.team.session('main').revision);catalog.configuration.members[0].identity='A focused source reader';catalog.configuration.defaults={model:{provider:'p',model:'small'},effort:'medium'};
- await assert.rejects(f.bots.execute({action:'configure_team',configuration:catalog.configuration,revision:catalog.revision},f.exec),/仅由用户管理/);await f.team.configure('main',catalog.configuration,catalog.revision);
+ await f.bots.execute({action:'configure_team',configuration:catalog.configuration,revision:catalog.revision},f.exec);
  const run=await f.bots.execute({action:'spawn',profileId:'team-executor',acceptance:'Verify actual evidence',task:'One bounded source task'},f.exec),child=f.agents.get(run.childId);
  assert.match(f.activations[0].request.prompt[0].text,/focused source reader/);assert.equal(f.activations[0].request.agentOptions.model,'small');
  const childCatalog=await f.bots.execute({action:'catalog'},{agent:child});assert.equal(childCatalog.configuration,undefined);assert.equal(childCatalog.revision,undefined);
