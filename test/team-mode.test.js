@@ -109,8 +109,44 @@ test('an old unknown delivery reconnects to exactly one native child without coo
  await assert.rejects(f.bots.execute({action:'spawn',profileId:'team-executor',task:'Recover one task',acceptance:'Check'},f.exec));
  const row=f.bots.tasks.runs[0];await f.bots.taskChange(state=>{delete state.runs[0].childId;});
  f.sessions.set('native-existing',{id:'native-existing',header:{parentSession:'main',cwd:'/project'},snapshotEvents:()=>[{seq:0,type:'turn/start'},{seq:1,type:'turn/end',data:{reason:{kind:'completed'}}}]});
- f.services.subagents.listChildren=async id=>{assert.equal(id,'main');return [{childId:'native-existing',label:row.profile.name,childCreatedAt:Date.parse(row.createdAt)}];};
+ f.services.subagents.listChildren=async id=>{assert.equal(id,'main');return [{id:'native-existing',mode:'continuable',label:row.profile.name,createdAt:Date.parse(row.createdAt)}];};
  const timeline=await f.bots.refreshTimeline('main');assert.equal(timeline.tasks[0].childId,'native-existing');assert.equal(timeline.tasks[0].done,true);
+}));
+
+test('a restored never-created child releases its stale slot and starts the already queued member message',()=>fixture(async f=>{
+ await f.enter();const activate=f.services.subagents.startActivation;
+ f.services.subagents.startActivation=async()=>{throw Error('Legacy activation failed');};
+ await assert.rejects(f.bots.execute({action:'spawn',profileId:'team-executor',task:'Old request',acceptance:'Check'},f.exec));
+ await f.bots.taskChange(state=>{delete state.runs[0].childId;});
+ await f.team.sendMember('main','team-executor','Independent user message','direct-message');
+ assert.equal(f.bots.tasks.runs.at(-1).status,'queued');
+ await f.bots.loadTasks();f.services.subagents.listChildren=async()=>[];f.services.subagents.startActivation=activate;
+ const value=await f.bots.refreshTimeline('main');
+ assert.equal(value.tasks[0].status,'dispatch-failed');assert.equal(value.tasks[0].dispatchError,'NATIVE_CHILD_NOT_CREATED');
+ assert.equal(value.tasks[0].done,true);assert.equal(f.activations.length,1);assert.equal(value.tasks.at(-1).childId,'child-1');
+}));
+
+test('an empty catalog cannot release a delivery failure from the current runtime',()=>fixture(async f=>{
+ await f.enter();f.services.subagents.startActivation=async()=>{throw Error('Current transport failure');};
+ await assert.rejects(f.bots.execute({action:'spawn',profileId:'team-executor',task:'Current request',acceptance:'Check'},f.exec));
+ await f.bots.taskChange(state=>{delete state.runs[0].childId;});f.services.subagents.listChildren=async()=>[];
+ const value=await f.bots.refreshTimeline('main');assert.equal(value.tasks[0].status,'delivery-unknown');assert.equal(value.tasks[0].done,false);
+}));
+
+test('failed catalog reads retain restored uncertain tasks',()=>fixture(async f=>{
+ await f.enter();f.services.subagents.startActivation=async()=>{throw Error('Old transport failure');};
+ await assert.rejects(f.bots.execute({action:'spawn',profileId:'team-executor',task:'Old request',acceptance:'Check'},f.exec));
+ await f.bots.taskChange(state=>{delete state.runs[0].childId;});await f.bots.loadTasks();
+ f.services.subagents.listChildren=async()=>{throw Error('Native catalog unavailable');};
+ const value=await f.bots.refreshTimeline('main');assert.equal(value.tasks[0].status,'delivery-unknown');assert.equal(value.tasks[0].done,false);
+}));
+
+test('ambiguous native children are never guessed or replaced',()=>fixture(async f=>{
+ await f.enter();f.services.subagents.startActivation=async()=>{throw Error('Old transport failure');};
+ await assert.rejects(f.bots.execute({action:'spawn',profileId:'team-executor',task:'Old request',acceptance:'Check'},f.exec));
+ await f.bots.taskChange(state=>{delete state.runs[0].childId;});await f.bots.loadTasks();const row=f.bots.tasks.runs[0];
+ f.services.subagents.listChildren=async()=>['one','two'].map(id=>({id,label:row.profile.name,createdAt:Date.parse(row.createdAt),mode:'continuable'}));
+ const value=await f.bots.refreshTimeline('main');assert.equal(value.tasks[0].childId,null);assert.equal(value.tasks[0].done,false);assert.equal(f.activations.length,0);
 }));
 
 test('ambiguous continuation reserves the member and never creates a replacement',()=>fixture(async f=>{
