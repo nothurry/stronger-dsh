@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,rm,readFile,writeFile} from 'node:fs/promises';
+import {mkdtemp,rm,readFile,writeFile,mkdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
@@ -31,6 +31,18 @@ async function fixture(run){
 }
 const config=team=>{const row=team.session('main');return {coordinator:structuredClone(row.coordinator),defaults:structuredClone(row.defaults),members:structuredClone(row.members)};};
 const task=(key,extra={})=>({key,profileId:'team-executor',task:'Read the scoped source and report '+key,acceptance:'Provide bounded evidence and a stage report',...extra});
+
+test('failed durable task replacement retains committed state and the write queue recovers',()=>fixture(async f=>{
+ const file=f.bots.taskFile,blocked=path.join(f.dir,'blocked-target');
+ await mkdir(blocked);await writeFile(path.join(blocked,'keep'),'original');
+ const before=JSON.stringify(f.bots.tasks);f.bots.taskFile=blocked;
+ await assert.rejects(f.bots.taskChange(state=>{state.messages.push({id:'failed-change'});}));
+ assert.equal(JSON.stringify(f.bots.tasks),before);assert.equal(await readFile(path.join(blocked,'keep'),'utf8'),'original');
+ f.bots.taskFile=file;
+ await f.bots.taskChange(state=>{state.messages.push({id:'committed-change',from:'main',to:'child',text:'Commit after recovery'});});
+ assert.equal(f.bots.tasks.messages[0].id,'committed-change');
+ assert.equal(JSON.parse(await readFile(file,'utf8')).messages[0].id,'committed-change');
+}));
 
 test('new teams have no implicit subagents and the user roster determines capacity',()=>fixture(async f=>{
  assert.equal(f.team.session('fresh').members.length,0);

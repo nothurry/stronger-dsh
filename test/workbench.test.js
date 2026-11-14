@@ -1,8 +1,33 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdtemp,readFile,writeFile,rm} from 'node:fs/promises';import path from 'node:path';import {tmpdir} from 'node:os';
-import {Workbench,DEFAULT_MODULES,validateModules,normalizedUsage,foldUsage,wireWorkbench,addUsage,summarizeUsage} from '../lib/workbench.js';
+import {Workbench,DEFAULT_MODULES,validateModules,normalizedUsage,foldUsage,wireWorkbench,addUsage,summarizeUsage,replaceFile} from '../lib/workbench.js';
+import {rename} from 'node:fs/promises';
 import {Workspace} from '../lib/workspace.js';
 const temp=async f=>{const dir=await mkdtemp(path.join(tmpdir(),'workbench-'));try{await f(dir);}finally{await rm(dir,{recursive:true,force:true});}};
+
+test('atomic replacement retries transient Windows sharing failures without rewriting the payload',()=>temp(async dir=>{
+ const destination=path.join(dir,'state.json'),temporary=destination+'.tmp';
+ await writeFile(destination,'old');await writeFile(temporary,'new');let calls=0;
+ await replaceFile(temporary,destination,async(source,target)=>{
+  calls++;
+  if(calls<3)throw Object.assign(Error('Temporary sharing violation'),{code:calls===1?'EPERM':'EBUSY'});
+  return rename(source,target);
+ });
+ assert.equal(calls,3);assert.equal(await readFile(destination,'utf8'),'new');
+}));
+
+test('persistent replacement denial is bounded and preserves the original file',()=>temp(async dir=>{
+ const destination=path.join(dir,'state.json'),temporary=destination+'.tmp',denied=Object.assign(Error('Denied'),{code:'EACCES'});
+ await writeFile(destination,'old');await writeFile(temporary,'new');let calls=0;
+ await assert.rejects(replaceFile(temporary,destination,async()=>{calls++;throw denied;}),error=>error===denied);
+ assert.equal(calls,7);assert.equal(await readFile(destination,'utf8'),'old');assert.equal(await readFile(temporary,'utf8'),'new');
+}));
+
+test('unrelated replacement errors propagate immediately',async()=>{
+ const failure=Object.assign(Error('Missing source'),{code:'ENOENT'});let calls=0;
+ await assert.rejects(replaceFile('missing','target',async()=>{calls++;throw failure;}),error=>error===failure);
+ assert.equal(calls,1);
+});
 
 test('a thinking home module saves and survives restart while unknown extension targets remain rejected',()=>temp(async dir=>{
  const w=new Workbench(dir,{get:()=>null});await w.load();
