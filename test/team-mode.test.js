@@ -193,7 +193,7 @@ test('the coordinator retains task tools while coordination remains its instruct
 }));
 test('member progress is reported in stages, wakes timeline waiters and never fabricates native completion',()=>fixture(async f=>{
  await f.enter();const spawned=await f.bots.execute({action:'spawn',profileId:'team-executor',acceptance:'Verify actual evidence',key:'worker',task:'Read one source'},f.exec),child=f.agents.get(spawned.childId),exec={agent:child};
- assert.match(f.team.guard({agent:child,name:'read_file'}),/先用.*report/);
+ assert.equal(f.team.guard({agent:child,name:'read_file'}),undefined);
  await f.bots.execute({action:'report',stage:'plan',percent:0,summary:'Plan the bounded source read',evidence:[]},exec);assert.equal(f.team.guard({agent:child,name:'read_file'}),undefined);
  const waiting=f.bots.execute({action:'wait',timeoutMs:1000},f.exec);await new Promise(resolve=>setImmediate(resolve));
  await f.bots.execute({action:'report',stage:'work',percent:50,summary:'One source checked',evidence:['source.md:4']},exec);assert.equal((await waiting).timedOut,false);
@@ -445,4 +445,60 @@ test('failed reserved session ids are never reused for the next assignment',()=>
 
 test('dispatch derives a stable plan key when task keys are present but the outer key is omitted',()=>fixture(async f=>{
  await f.enter();await f.bots.execute({action:'dispatch',tasks:[task('implicit-plan')]},f.exec);await f.bots.execute({action:'dispatch',tasks:[task('implicit-plan')]},f.exec);assert.equal(f.activations.length,1);
+}));
+
+test('modern native model selection runs when inbox input is claimed and request assembly preserves it',()=>fixture(async f=>{
+ const ctx=new Context();for(const [name,value]of Object.entries(f.services))ctx.provide(name,value);
+ const intelligence=new Intelligence(f.dir,ctx);await intelligence.load();
+ await intelligence.configure({routingEnabled:true,routes:{operations:{provider:'other',model:'generic'}}});await intelligence.task('main','operations');
+ const value=config(f.team);value.coordinator.model={provider:'p',model:'leader'};value.coordinator.effort='medium';
+ await f.team.configure('main',value,0);await f.workbench.selectPreset('main','team');
+ let selected={provider:'p',model:'main'};
+ f.parent.model={current:()=>selected,select:value=>{selected={...value};}};
+ const fiber=ctx.plugin({apply:scope=>{wireIntelligence(scope,intelligence);wireWorkbench(scope,f.workbench);wireTeamMode(scope,f.team);}});await fiber;
+ ctx.emit('agent/inbox/claimed',{agent:f.parent,message:{source:{kind:'user'}}});
+ assert.deepEqual(selected,{provider:'p',model:'leader',reasoningEffort:'medium'});
+ const prepared={...selected,tools:[{name:'workspace_team'}]};
+ const request=await ctx.waterfall('agent/request',{agent:f.parent,signal:new AbortController().signal},()=>Promise.resolve(prepared));
+ assert.equal(request.provider,prepared.provider);assert.equal(request.model,prepared.model);assert.equal(request.reasoningEffort,prepared.reasoningEffort);
+ await fiber.dispose();
+}));
+
+test('modern member model changes record a native selection while the admitted request keeps its fixed route',()=>fixture(async f=>{
+ await f.enter();const run=await f.bots.execute({action:'spawn',...task('native-model')},f.exec),child=f.agents.get(run.childId);
+ let selected={provider:'p',model:'main',reasoningEffort:'high'};
+ child.model={current:()=>selected,select:value=>{selected={...value};}};
+ const value=config(f.team);value.members[0].model={provider:'p',model:'small'};value.members[0].effort='medium';
+ await f.team.configure('main',value,f.team.session('main').revision);
+ assert.deepEqual(selected,{provider:'p',model:'small',reasoningEffort:'medium'});
+ const admitted={provider:'p',model:'main',reasoningEffort:'high',tools:[]};
+ const request=await f.team.request(child,admitted);
+ assert.equal(request,admitted);assert.equal(f.bots.tasks.runs[0].modelUse.model,'main');
+}));
+
+test('a direct child conversation continues while the coordinator is in another mode and unloaded',()=>fixture(async f=>{
+ await f.enter();const run=await f.bots.execute({action:'spawn',...task('independent')},f.exec),child=f.agents.get(run.childId);
+ f.finish(run.childId);await f.bots.onEvent(child.session,{type:'turn/end'});
+ f.workbench.config.sessionPresets.main='ptc';await f.team.transition(f.parent,false);
+ f.agents.delete('main');f.services.sessionController={resolveAgent:()=>{throw Error('Coordinator must remain unloaded');}};
+ const events=child.session.snapshotEvents();events.push({seq:events.length,type:'turn/start',data:{}});
+ const row=await f.team.trackNativeTurn(child.session);
+ assert.equal(row.childId,run.childId);assert.equal(row.done,false);assert.equal(f.team.active('main'),false);assert.equal(f.workbench.config.sessionPresets.main,'ptc');
+ assert.equal(f.team.guard({agent:child,name:'ask_user'}),undefined);
+}));
+
+test('consecutive native child turns keep distinct task boundaries before end handlers settle',()=>fixture(async f=>{
+ await f.enter();const run=await f.bots.execute({action:'spawn',...task('turn-race')},f.exec),child=f.agents.get(run.childId);
+ f.finish(run.childId);const events=child.session.snapshotEvents();events.push({seq:events.length,type:'turn/start',data:{}});
+ const next=await f.team.trackNativeTurn(child.session);
+ assert.notEqual(next.id,run.taskId);assert.equal(f.bots.tasks.runs[0].status,'completed');assert.equal(f.bots.tasks.runs[0].done,true);
+ assert.equal(next.done,false);assert.equal((await f.bots.inspect(next)).status,'running');
+}));
+
+test('child inspection skips inherited turns and preserves the current terminal provider error',()=>fixture(async f=>{
+ await f.enter();const run=await f.bots.execute({action:'spawn',...task('own-boundary')},f.exec),child=f.sessions.get(run.childId),events=child.snapshotEvents();
+ events.splice(0,events.length,{seq:0,type:'turn/start'},{seq:1,type:'turn/end',data:{reason:{kind:'completed'}}},{seq:10,type:'turn/start'},{seq:11,type:'turn/end',data:{reason:{kind:'error',error:{code:'QUOTA',message:'429: Provider frequency limit, retry after the reset time'}}}});
+ child.isOwnSeq=seq=>seq>=10;
+ await f.bots.inspect(f.bots.tasks.runs[0]);const row=f.bots.timeline('main').tasks[0];
+ assert.equal(row.status,'error');assert.equal(row.done,true);assert.equal(row.runError.code,'QUOTA');assert.match(row.runError.message,/frequency limit/);
 }));
