@@ -1,3 +1,7 @@
 - insert:
     - id: ui-stronger
       name: dsh-ui-stronger
+
+- id: ui-chat
+  config:
+    foldedReplies: final

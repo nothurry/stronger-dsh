@@ -122,7 +122,7 @@ test('a restored never-created child releases its stale slot and starts the alre
  assert.equal(f.bots.tasks.runs.at(-1).status,'queued');
  await f.bots.loadTasks();f.services.subagents.listChildren=async()=>[];f.services.subagents.startActivation=activate;
  const value=await f.bots.refreshTimeline('main');
- assert.equal(value.tasks[0].status,'dispatch-failed');assert.equal(value.tasks[0].dispatchError,'NATIVE_CHILD_NOT_CREATED');
+ assert.equal(value.tasks[0].status,'dispatch-failed');assert.equal(value.tasks[0].dispatchError,'Error');assert.match(f.bots.tasks.runs[0].dispatchFailure,/Legacy activation failed/);
  assert.equal(value.tasks[0].done,true);assert.equal(f.activations.length,1);assert.equal(value.tasks.at(-1).childId,'child-1');
 }));
 
@@ -367,7 +367,7 @@ test('team workspace styles preserve the embedded native conversation buttons an
 test('current host activation receives flat arguments and a stable native member name',()=>fixture(async f=>{
  await f.enter();const original=f.services.subagents.startActivation;
  f.services.subagents.rootOf=()=>f.parent;
- f.services.subagents.startActivation=async spec=>{assert.equal(spec.parent,f.parent);assert.equal(spec.request,undefined);assert.equal(spec.name,'team-executor');assert(Array.isArray(spec.prompt));return original({...spec,request:spec});};
+ f.services.subagents.startActivation=async spec=>{assert.equal(spec.parent,f.parent);assert.equal(spec.request,undefined);assert.match(spec.name,/^member-[a-f0-9]{20}$/);assert(Array.isArray(spec.prompt));return original({...spec,request:spec});};
  await f.bots.execute({action:'spawn',...task('flat')},f.exec);assert.equal(f.activations.length,1);
 }));
 
@@ -410,4 +410,27 @@ test('deletion aborts an in-flight activation before removing its member',()=>fi
  const next=config(f.team);next.members=next.members.filter(row=>row.id!=='team-executor');
  await f.team.configure('main',next,f.team.session('main').revision);await rejected;
  assert.equal(f.bots.tasks.runs[0].done,true);assert.equal(f.bots.tasks.runs[0].status,'cancelled');assert.equal(f.team.profiles('main').length,1);
+}));
+
+
+test('UUID member identifiers are mapped to valid native names',()=>fixture(async f=>{
+ const cfg=config(f.team);cfg.members[0].id='9e126f31-6df0-477a-b25d-504ac089f212';await f.team.configure('main',cfg,0);await f.enter();
+ f.services.subagents.rootOf=()=>f.parent;const start=f.services.subagents.startActivation;
+ f.services.subagents.startActivation=spec=>{assert.match(spec.name,/^[a-z][a-z0-9-]{0,31}$/);return start({...spec,request:spec});};
+ await f.bots.execute({action:'spawn',...task('uuid',{profileId:cfg.members[0].id})},f.exec);
+ assert.equal(f.activations.length,1);
+}));
+
+test('failed reserved session ids are never reused for the next assignment',()=>fixture(async f=>{
+ await f.enter();const start=f.services.subagents.startActivation;f.services.subagents.startActivation=async()=>{throw Object.assign(Error('invalid agent name'),{code:'INVALID_AGENT_NAME'});};
+ await assert.rejects(f.bots.execute({action:'spawn',...task('bad-name')},f.exec));
+ f.services.subagents.listChildren=async()=>[];await f.bots.refreshTimeline('main');
+ assert.equal(f.bots.tasks.runs[0].dispatchError,'INVALID_AGENT_NAME');assert.match(f.bots.tasks.runs[0].dispatchFailure,/invalid agent name/);
+ f.services.subagents.startActivation=start;await f.bots.execute({action:'spawn',...task('retry-after-fix')},f.exec);
+ assert.equal(f.activations.length,1);assert.equal(f.bots.tasks.runs.at(-1).childId,'child-1');
+}));
+
+
+test('dispatch derives a stable plan key when task keys are present but the outer key is omitted',()=>fixture(async f=>{
+ await f.enter();await f.bots.execute({action:'dispatch',tasks:[task('implicit-plan')]},f.exec);await f.bots.execute({action:'dispatch',tasks:[task('implicit-plan')]},f.exec);assert.equal(f.activations.length,1);
 }));
