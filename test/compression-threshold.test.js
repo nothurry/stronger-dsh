@@ -4,7 +4,7 @@ import {mkdtemp,readFile,writeFile,readdir,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {Context} from '@deepseek-ai/cordis';
-import {Intelligence,compressionTrigger,contextPolicy,policyFacade,wireIntelligence} from '../lib/intelligence.js';
+import {Intelligence,compressionTrigger,contextPolicy,policyFacade,wireIntelligence,compactionFor} from '../lib/intelligence.js';
 
 const fixed=()=>contextPolicy({auto:true,triggerMode:'tokens',thresholdTokens:32000,thresholdRatio:.75});
 async function fixture(run){const dir=await mkdtemp(path.join(tmpdir(),'compression-trigger-'));try{await run(dir);}finally{await rm(dir,{recursive:true,force:true});}}
@@ -78,4 +78,37 @@ test('first legacy write preserves exact old settings for rollback without overw
  await service.configure({context:fixed()});
  const backups=(await readdir(dir)).filter(name=>name.startsWith('intelligence.pre-threshold-'));assert.equal(backups.length,1);assert.equal(await readFile(path.join(dir,backups[0]),'utf8'),raw);
  await service.configure({context:{...fixed(),thresholdTokens:64000}});assert.equal(await readFile(path.join(dir,backups[0]),'utf8'),raw);
+}));
+
+test('already mounted isolated services are discovered from the native symbol store without legacy fiber stores',async()=>{
+ const hooks=new Map(),cleanup=[],engine={config:{auto:true,thresholdRatio:.8,modelPolicies:[]},compactIfNeeded:async function(){return this.config.thresholdRatio;},summarize:async()=>''};
+ const key=Symbol('isolated-compaction'),store={[key]:{name:'compaction',value:engine,ctx:{fiber:{state:2}}}};
+ const ctx={reflect:{store},get:()=>undefined,inject(){},on(name,callback){hooks.set(name,callback);return()=>hooks.delete(name);},effect(callback){cleanup.push(callback());}};
+ const service=new Intelligence('',ctx);service.ready=true;service.config.context=contextPolicy({auto:true,thresholdRatio:.5});
+ const original=engine.compactIfNeeded;
+ wireIntelligence(ctx,service);
+ assert(service.adapter);
+ assert.equal(await engine.compactIfNeeded({session:{requestContext:()=>({contextWindow:1000000})}},'pressure'),.5);
+ for(const dispose of cleanup)await dispose();
+ assert.equal(engine.compactIfNeeded,original);
+});
+
+test('agent preset service lookup reaches the exact isolated compactor and preserves direct service precedence',()=>{
+ const isolated={id:'isolated'},direct={id:'direct'},root={id:'root'},agent={ctx:{get:()=>undefined}};
+ const ctx={get:name=>name==='agentPresets'?{serviceFor:(actual,name)=>{assert.equal(actual,agent);assert.equal(name,'compaction');return isolated;}}:name==='compaction'?root:undefined};
+ assert.equal(compactionFor(ctx,agent),isolated);
+ agent.ctx.get=()=>direct;
+ assert.equal(compactionFor(ctx,agent),direct);
+ assert.equal(compactionFor(ctx,undefined),root);
+});
+
+test('manual compression uses the preset-owned engine and its token meter when the agent context cannot see them',()=>fixture(async dir=>{
+ let tokens=540000,calls=0;
+ const meter={measure:()=>({totalTokens:tokens})};
+ const agent={session:{},ctx:{get:()=>undefined}};
+ const engine={ctx:{get:name=>name==='tokenMeter'?meter:undefined},compactNow:async(actual,signal)=>{assert.equal(actual,agent);signal.throwIfAborted();calls++;tokens=20000;return {shadowedSeqs:[1,2]};}};
+ const ctx={get:name=>name==='agents'?{get:()=>agent}:name==='agentPresets'?{serviceFor:()=>engine}:undefined};
+ const service=new Intelligence(dir,ctx);await service.load();
+ const result=await service.compact('one');
+ assert.equal(calls,1);assert.equal(result.before,540000);assert.equal(result.after,20000);assert(result.changed);
 }));
