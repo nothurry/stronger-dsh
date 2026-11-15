@@ -4,7 +4,7 @@ import {mkdtemp,writeFile,mkdir,rm,symlink,readFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {Workspace,wireWorkspace,BUILTIN_SKILLS} from '../lib/workspace.js';
-import {wireGuard,parseReview,readReview,reviewSnapshot} from '../lib/guard.js';
+import {wireGuard,parseReview,readReview,reviewSnapshot,reviewMessage} from '../lib/guard.js';
 import {Intelligence} from '../lib/intelligence.js';
 
 async function temporary(fn){const root=await mkdtemp(path.join(tmpdir(),'dsh-capabilities-'));try{await fn(root);}finally{await rm(root,{recursive:true,force:true});}}
@@ -19,7 +19,7 @@ test('verified owner settings reach the reviewer and revocation invalidates an e
  Object.assign(exec.agent.session.snapshotEvents().find(event=>event.type==='tool/call').data,{name:exec.name,arguments:exec.arguments});
  const gate=h.events.get('tools/pre-execute');
  assert.equal((await gate(exec,async()=>({kind:'allow'}))).kind,'allow');
- const payload=JSON.parse(request.messages[0].content[0].text);
+ const payload=JSON.parse(request.messages[0].content[1].text);
  assert.equal(payload.ownerPolicy.source,'owner-setting');assert.equal(payload.action.arguments.ownerPolicy,'forged argument');
  assert.equal(guard(exec),undefined);enabled=false;assert.match(guard(exec),/缺少有效/);
  await h.dispose();await workspace.dispose();
@@ -62,6 +62,76 @@ test('review terminal failures preserve the real cause, redact bearer tokens and
  await assert.rejects(readReview(stream({kind:'error',failure:{code:'INVALID_REQUEST',message:'unsupported temperature Bearer hidden-secret'}})),error=>error.message.includes('INVALID_REQUEST')&&error.message.includes('unsupported temperature')&&!error.message.includes('hidden-secret'));
  await assert.rejects(readReview((async function*(){yield {type:'text-delta',index:0,text:'{"decision":"allow","risk":"low","reason":"ok"}'};yield {type:'finish',reason:{kind:'max-tokens'}};})()),/输出达到上限/);
 });
+
+test('review parser accepts a single JSON fence and rejects prose, multiple verdicts and leaked snippets',()=>{
+ const verdict='{"decision":"allow","risk":"low","reason":"bounded read"}';
+ assert.deepEqual(parseReview('```json\n'+verdict+'\n```'),JSON.parse(verdict));
+ assert.deepEqual(parseReview('```\n'+verdict+'\n```'),JSON.parse(verdict));
+ for(const text of ['Private project sentence '+verdict,'<div>private</div>','```json\n'+verdict+'\n```\n'+verdict,'```json\n{"decision":"deny","decision":"allow","risk":"low","reason":"x"}\n```']){
+  assert.throws(()=>parseReview(text),error=>!error.message.includes('Private project')&&!error.message.includes('<div>'));
+ }
+});
+
+test('review request surrounds unchanged evidence with explicit review-only instructions',()=>{
+ const evidence={history:[{role:'human-instruction',text:'Continue my project'}],action:{name:'read',arguments:{file:'a.js'}}};
+ const message=reviewMessage(evidence);
+ assert.equal(message.role,'user');assert.equal(message.source.kind,'ui-stronger-review');
+ assert.match(message.content[0].text,/review-only/);
+ assert.deepEqual(JSON.parse(message.content[1].text),evidence);
+ assert.match(message.content[2].text,/Return only/);
+});
+
+test('review deadline also releases a stalled model resolver and reports infrastructure failure',t=>temporary(async root=>{
+ const deadline=new AbortController();let timeout;
+ t.mock.method(AbortSignal,'timeout',milliseconds=>{timeout=milliseconds;return deadline.signal;});
+ const workspace=new Workspace(root);await workspace.load();let called=false;
+ const h=harness({tools:{guard(){}},workingDirectory:{ensure:async()=>'/project'},llm:{resolveModelInfo:()=>new Promise(()=>{}),stream(){called=true;return response({decision:'allow',risk:'low',reason:'ok'});}}});
+ wireGuard(h.ctx,workspace);
+ const exec={agent:{session:sessionFixture()},name:'shell',arguments:{cmd:'npm test'},callId:'call',rootCallId:'call',signal:new AbortController().signal};
+ const pending=h.events.get('tools/pre-execute')(exec,async()=>({kind:'allow'}));
+ await new Promise(resolve=>setImmediate(resolve));deadline.abort(new DOMException('deadline','TimeoutError'));
+ const result=await pending;
+ assert.equal(timeout,180000);assert.equal(result.kind,'deny');assert.equal(called,false);
+ assert.equal(result.info.failureCode,'REVIEW_TIMEOUT');assert.match(result.reason,/180 秒/);
+ assert.equal(workspace.reviewState('one').pending,false);assert.equal(workspace.reviewState('one').outcome,'incomplete');
+ assert.match(workspace.reviewFeedback('one').next,/审查调用失败/);assert(!workspace.reviewFeedback('one').next.includes('缩小范围'));
+ await h.dispose();
+}));
+
+test('review cancellation is distinct from timeout and structured errors retain their message',()=>temporary(async root=>{
+ const workspace=new Workspace(root);await workspace.load();let fail=false;
+ const h=harness({tools:{guard(){}},workingDirectory:{ensure:async()=>'/project'},llm:{stream(){if(fail)throw {code:'UPSTREAM_BUSY',message:'provider busy'};return response({decision:'allow',risk:'low',reason:'ok'});}}});
+ wireGuard(h.ctx,workspace);const controller=new AbortController();controller.abort();
+ const exec={agent:{session:sessionFixture()},name:'shell',arguments:{cmd:'npm test'},callId:'call',rootCallId:'call',signal:controller.signal};
+ assert.equal((await h.events.get('tools/pre-execute')(exec,async()=>({kind:'allow'}))).info.failureCode,'REVIEW_CANCELLED');
+ fail=true;exec.signal=new AbortController().signal;
+ const result=await h.events.get('tools/pre-execute')(exec,async()=>({kind:'allow'}));
+ assert.equal(result.info.failureCode,'UPSTREAM_BUSY');assert.match(result.reason,/provider busy/);assert(!result.reason.includes('[object Object]'));
+ await h.dispose();
+}));
+
+test('review output has a bounded budget and a real denial remains separate from infrastructure failure',()=>temporary(async root=>{
+ const workspace=new Workspace(root);await workspace.load();let options;
+ const h=harness({tools:{guard(){}},workingDirectory:{ensure:async()=>'/project'},llm:{resolveModelInfo:async()=>({defaultMaxTokens:4096}),stream(request){options=request;return response({decision:'deny',risk:'high',reason:'unauthorized destruction'});}}});
+ wireGuard(h.ctx,workspace);
+ const exec={agent:{session:sessionFixture()},name:'shell',arguments:{cmd:'npm test'},callId:'call',rootCallId:'call',signal:new AbortController().signal};
+ const result=await h.events.get('tools/pre-execute')(exec,async()=>({kind:'allow'}));
+ assert.equal(options.maxTokens,4096);assert.equal(options.reasoningEffort,undefined);
+ assert.equal(result.info.failureCode,null);assert.match(result.reason,/安全模型审查拒绝/);
+ assert.equal(workspace.reviewFeedback('one').outcome,'denied');
+ await h.dispose();
+}));
+
+test('audit write failure cannot leave an allow outcome in review state',()=>temporary(async root=>{
+ const workspace=new Workspace(root);await workspace.load();await mkdir(path.join(root,'review-audit.jsonl'));
+ const h=harness({tools:{guard(){}},workingDirectory:{ensure:async()=>'/project'},llm:{stream:()=>response({decision:'allow',risk:'low',reason:'bounded tests'})}});
+ wireGuard(h.ctx,workspace);
+ const exec={agent:{session:sessionFixture()},name:'shell',arguments:{cmd:'npm test'},callId:'call',rootCallId:'call',signal:new AbortController().signal};
+ const result=await h.events.get('tools/pre-execute')(exec,async()=>({kind:'allow'}));
+ assert.equal(result.kind,'deny');assert.equal(result.info.failureCode,'REVIEW_AUDIT_WRITE_FAILED');
+ assert.equal(workspace.reviewFeedback('one').outcome,'incomplete');assert.equal(workspace.lastReview.decision,'deny');
+ await h.dispose();
+}));
 test('large reference data cannot displace the newest human restriction; incomplete authorization is flagged',()=>{
  const session=sessionFixture(),events=session.snapshotEvents();events.splice(1,0,{seq:10,type:'user/message',data:{source:{kind:'knowledge'},content:[{type:'text',text:'reference '.repeat(8000)}]}});events.splice(2,0,{seq:11,type:'user/message',data:{source:{kind:'user',rpcId:'revocation'},content:[{type:'text',text:'Stop. Do not modify any files.'}]}});session.surface.nodes=[0,10,11];let snap=reviewSnapshot({agent:{session},name:'shell',rootCallId:'call',arguments:{cmd:'npm test'}},'/project');assert(snap.payload.history.some(x=>x.text==='Stop. Do not modify any files.'));assert.equal(snap.payload.historyTruncated,false);assert(snap.payload.history.find(x=>x.role==='fact').text.length<=1200);
  events[0].data.content[0].text='A'.repeat(41000);snap=reviewSnapshot({agent:{session},name:'shell',rootCallId:'call',arguments:{cmd:'npm test'}},'/project');assert(snap.payload.history.some(x=>x.text==='Stop. Do not modify any files.'));assert.equal(snap.payload.historyTruncated,true);
@@ -69,7 +139,7 @@ test('large reference data cannot displace the newest human restriction; incompl
 test('guard is fail closed, monotonic, reviews exact arguments and rejects mutation/bypass after allow',()=>temporary(async root=>{
  const w=new Workspace(root);await w.load();let guard,options,fail=false,decision={decision:'allow',risk:'low',reason:'tests requested'};const h=harness({tools:{guard(fn){guard=fn;return ()=>{};}},workingDirectory:{ensure:async()=>'/project'},llm:{stream(o){options=o;assert.equal(w.reviewState(o.sessionId).pending,true);if(fail)throw new Error('network down');return response(decision);}}});wireGuard(h.ctx,w);const gate=h.events.get('tools/pre-execute'),create=()=>({agent:{session:sessionFixture()},name:'shell',arguments:{cmd:'npm test'},callId:'call',rootCallId:'call',signal:new AbortController().signal});
  const missing=create();missing.agent=undefined;assert.equal((await gate(missing,async()=>({kind:'allow'}))).kind,'deny');
- const exec=create();assert.match(guard(exec),/缺少有效/);assert.equal((await gate(exec,async()=>({kind:'allow'}))).kind,'allow');assert.equal(guard(exec),undefined);assert.equal(w.reviewState(exec.agent.session.id).pending,false);assert(options.messages[0].content[0].text.includes('npm test'));exec.arguments.cmd='delete everything';assert.match(guard(exec),/缺少有效/);
+ const exec=create();assert.match(guard(exec),/缺少有效/);assert.equal((await gate(exec,async()=>({kind:'allow'}))).kind,'allow');assert.equal(guard(exec),undefined);assert.equal(w.reviewState(exec.agent.session.id).pending,false);assert(options.messages[0].content[1].text.includes('npm test'));exec.arguments.cmd='delete everything';assert.match(guard(exec),/缺少有效/);
  decision={decision:'deny',risk:'medium',reason:'Not authorized'};assert.equal((await gate(create(),async()=>({kind:'allow'}))).kind,'deny');const deniedId=create().agent.session.id;assert.equal(w.reviewFeedback(deniedId).reason,'Not authorized');assert.match(w.reviewFeedback(deniedId).next,/重新|新参数/);assert.equal(w.reviewFeedback('another-session').available,false);decision={decision:'allow',risk:'low',reason:'ok'};assert.equal((await gate(create(),async()=>({kind:'deny',reason:'native rejection'}))).reason,'native rejection');const oversized=create();oversized.agent.session.snapshotEvents()[0].data.content[0].text='A'.repeat(41000);assert.equal((await gate(oversized,async()=>({kind:'allow'}))).kind,'deny');assert.match(guard(oversized),/缺少有效/);fail=true;assert.equal((await gate(create(),async()=>({kind:'allow'}))).kind,'deny');const log=await readFile(path.join(root,'review-audit.jsonl'),'utf8');assert(!log.includes('npm test'));await h.dispose();
 }));
 
