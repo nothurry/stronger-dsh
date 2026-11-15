@@ -1,12 +1,152 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,rm,readFile} from 'node:fs/promises';
+import {mkdtemp,rm,readFile,writeFile,readdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {Bots,wireBots} from '../lib/bots.js';
 
 async function fixture(fn){const data=await mkdtemp(path.join(tmpdir(),'team-scheduler-'));const events=[{seq:1,type:'user/message',data:{source:{kind:'user',rpcId:'human-fixture'}}}];const parent={id:'parent',session:{id:'parent',header:{cwd:'/work'},snapshotEvents:()=>events}},agents=new Map([['parent',parent]]),sessions=new Map([['parent',parent.session]]),specs=[],wakes=[];let active=0,peak=0;const service={resolveMaxDepth:()=>2,startActivation:async spec=>{assert(Array.isArray(spec.request.prompt),'DSH 0.2.2 expects message blocks');assert.equal(spec.request.maxDepth,1);const id='child-'+(specs.length+1);specs.push(spec);active++;peak=Math.max(peak,active);await new Promise(resolve=>setImmediate(resolve));active--;const log=[{seq:1,type:'turn/start',data:{}}],session={id,header:{origin:'subagent',parentSession:'parent',cwd:'/work'},snapshotEvents:()=>log};sessions.set(id,session);agents.set(id,{id,session});return {childId:id};},sendMessage:async(sender,to,content)=>{wakes.push({sender:sender.session.id,to,content});if(content[0].text.startsWith('角色参考配置')){specs.push({reused:true,request:{parent:sender,prompt:content}});const log=sessions.get(to).snapshotEvents();log.push({seq:Math.max(...log.map(event=>event.seq))+1,type:'turn/start',data:{}});}return 'accepted';},interrupt:(child,parent)=>{assert.equal(parent.agent,agents.get('parent'));assert.equal(parent.kind,'ancestor');sessions.get(child).snapshotEvents().push({seq:99,type:'turn/end',data:{reason:{kind:'cancelled'}}});}};const ctx={get:name=>({agents:{get:id=>agents.get(id)},sessions:{get:id=>sessions.get(id)},subagents:service}[name])};let bots=new Bots(data,ctx);await bots.load();const exec={agent:parent,signal:new AbortController().signal};const enable=async patch=>bots.configurePolicy({sessionId:'parent',revision:bots.state.revision,enabled:true,maxParallel:2,maxTasks:8,...patch});const finish=(id,kind='completed')=>sessions.get(id).snapshotEvents().push({seq:Math.max(...sessions.get(id).snapshotEvents().map(event=>event.seq))+1,type:'turn/end',data:{reason:{kind}}});try{await fn({bots,data,ctx,parent,exec,enable,specs,wakes,agents,sessions,events,finish,peak:()=>peak,reload:async()=>{await bots.close();bots=new Bots(data,ctx);await bots.load();return bots;}});}finally{await bots.close();await rm(data,{recursive:true,force:true});}}
 const task=(key,extra={})=>({key,task:'Read a bounded source and report '+key,acceptance:'Cite an actual location and explain limits',...extra});
+
+function completedRecords(profile,count=128){
+ return Array.from({length:count},(_,index)=>({
+  id:'historical-'+index,key:'old-'+index,parent:'parent',budgetKey:'old-request-'+index,
+  task:'Previously completed bounded task '+index,acceptance:'Check evidence',context:'',skills:[],
+  requireReview:false,dependsOn:[],resources:[],phase:'work',profile:{...profile},
+  status:'completed',done:true,result:'Stored result '+index,
+  createdAt:new Date(1700000000000+index).toISOString()
+ }));
+}
+
+test('a legacy full task file archives completed history and admits a new plan without losing old status or replay protection',()=>fixture(async f=>{
+ await f.enable({maxParallel:1,maxTasks:1});
+ const rows=completedRecords(f.bots.taskProfiles('parent').find(profile=>profile.role==='child'));
+ const original=task('original');
+ Object.assign(rows[0],original,{id:'historical-0',plan:'original-plan',planSignature:JSON.stringify([original])});
+ await writeFile(path.join(f.data,'team-tasks.json'),JSON.stringify({version:1,runs:rows,messages:[]}));
+ const bots=await f.reload();
+ assert.equal(bots.tasks.runs.length,128);
+ await bots.execute({action:'dispatch',key:'new-plan',tasks:[task('new')]},f.exec);
+ assert.equal(f.specs.length,1);assert(bots.tasks.runs.length<64);
+ const historic=await bots.execute({action:'status',taskId:'historical-0'},f.exec);
+ assert.equal(historic.archived,true);assert.equal(historic.status,'completed');assert.equal(historic.result,'Stored result 0');
+ const replay=await bots.execute({action:'dispatch',key:'original-plan',tasks:[original]},f.exec);
+ assert.equal(replay.duplicate,true);assert.equal(replay.tasks[0].id,'historical-0');assert.equal(f.specs.length,1);
+ await assert.rejects(bots.execute({action:'dispatch',key:'original-plan',tasks:[task('changed')]},f.exec),/计划编号/);
+ const history=await bots.execute({action:'history',limit:3},f.exec);
+ assert.equal(history.rows.length,3);assert(history.total>=96);assert.equal(history.nextOffset,3);
+ const restarted=await f.reload();
+ assert.equal((await restarted.execute({action:'status',taskId:'historical-0'},f.exec)).archived,true);
+}));
+
+test('archived dependencies are restored before admission and archived tasks cannot be queried across parents',()=>fixture(async f=>{
+ await f.enable({maxParallel:1,maxTasks:1});
+ const rows=completedRecords(f.bots.taskProfiles('parent').find(profile=>profile.role==='child'));
+ rows[1].parent='foreign';
+ await writeFile(path.join(f.data,'team-tasks.json'),JSON.stringify({version:1,runs:rows,messages:[]}));
+ const bots=await f.reload();
+ await bots.execute({action:'dispatch',key:'dependent-plan',tasks:[task('dependent',{dependsOn:['historical-0']})]},f.exec);
+ assert.equal(f.specs.length,1);
+ assert(bots.tasks.runs.some(row=>row.id==='historical-0'));
+ assert(bots.tasks.runs.some(row=>row.key==='dependent'&&row.status==='running'));
+ await assert.rejects(bots.execute({action:'status',taskId:'historical-1'},f.exec),/不是本会话/);
+}));
+
+test('archival keeps the authenticated request budget and cannot reset it by discarding completed records',()=>fixture(async f=>{
+ await f.enable({maxParallel:1,maxTasks:1});
+ const rows=completedRecords(f.bots.taskProfiles('parent').find(profile=>profile.role==='child'));
+ rows[0].budgetKey=f.bots.budgetKey('parent');
+ await writeFile(path.join(f.data,'team-tasks.json'),JSON.stringify({version:1,runs:rows,messages:[]}));
+ const bots=await f.reload();
+ await assert.rejects(bots.execute({action:'dispatch',key:'too-many',tasks:[task('new')]},f.exec),/预算/);
+ assert.equal(f.specs.length,0);assert.equal(bots.budgetUsed(bots.tasks,'parent',bots.budgetKey('parent')),1);
+}));
+
+test('a long conversation continues across more than 128 rounds and preserves history after reload',()=>fixture(async f=>{
+ await f.enable({maxParallel:1,maxTasks:1});
+ for(let index=0;index<140;index++){
+  f.events.push({seq:index+10,type:'user/message',data:{source:{kind:'user',rpcId:'human-'+index}}});
+  await f.bots.execute({action:'dispatch',key:'round-'+index,tasks:[task('work-'+index)]},f.exec);
+  const row=f.bots.tasks.runs.findLast(task=>task.key==='work-'+index);
+  f.finish(row.childId);await f.bots.onEvent(f.sessions.get(row.childId),{type:'turn/end'});
+ }
+ assert.equal(f.specs.length,140);assert(f.bots.tasks.runs.length<64);
+ const next=await f.reload(),page=await next.execute({action:'history',limit:24},f.exec);
+ assert(page.total>=96);assert.equal(page.rows.length,24);
+ const first=await next.execute({action:'dispatch',key:'round-0',tasks:[task('work-0')]},f.exec);
+ assert.equal(first.duplicate,true);assert.equal(f.specs.length,140);
+}));
+
+test('a history write failure preserves the full original active file and does not start a task',()=>fixture(async f=>{
+ await f.enable({maxParallel:1,maxTasks:1});
+ const rows=completedRecords(f.bots.taskProfiles('parent').find(profile=>profile.role==='child'));
+ const original=JSON.stringify({version:1,runs:rows,messages:[]});
+ await writeFile(path.join(f.data,'team-tasks.json'),original);
+ const bots=await f.reload();bots.history.archive=async()=>{throw Error('history disk full');};
+ await assert.rejects(bots.execute({action:'dispatch',key:'new',tasks:[task('new')]},f.exec),/history disk full/);
+ assert.equal(bots.tasks.runs.length,128);assert.equal(await readFile(path.join(f.data,'team-tasks.json'),'utf8'),original);assert.equal(f.specs.length,0);
+}));
+
+test('active status queries distinguish review failure, approval, questions, reported blockers and the running coordinator',()=>fixture(async f=>{
+ await f.enable();const result=await f.bots.execute({action:'spawn',task:'Bounded check'},f.exec);
+ f.parent.status='running';f.agents.get(result.childId).status='running';
+ let remote=[],review={pending:false,decision:'deny',outcome:'incomplete',failureCode:'REVIEW_TIMEOUT',reason:'review timed out'};
+ const nativeGet=f.ctx.get;f.ctx.get=name=>name==='typertGateway'?{getPendingRemoteEvents:()=>remote}:nativeGet(name);
+ f.bots.reviewState=id=>id===result.childId?review:null;
+ let timeline=await f.bots.execute({action:'timeline'},f.exec);
+ assert.equal(timeline.agents[0].activity.state,'running');assert.equal(timeline.tasks[0].activity.state,'review-failed');
+ assert.equal(timeline.tasks[0].activity.review.failureCode,'REVIEW_TIMEOUT');
+ remote=[{agentId:result.childId,event:'approval/request'}];
+ assert.equal((await f.bots.execute({action:'status',childId:result.childId},f.exec)).activity.state,'awaiting-approval');
+ remote=[{agentId:result.childId,event:'user-questions/request'}];
+ assert.equal((await f.bots.execute({action:'status',childId:result.childId},f.exec)).activity.state,'awaiting-input');
+ remote=[];review=null;
+ await f.bots.report({stage:'blocked',summary:'Missing input',blockers:'Need reference file',evidence:[]},{agent:f.agents.get(result.childId)});
+ const status=await f.bots.execute({action:'status',childId:result.childId},f.exec);
+ assert.equal(status.activity.state,'blocked');assert.equal(status.activity.blockers,'Need reference file');
+}));
+
+test('waiting for team state returns when a child review changes without ending the task',()=>fixture(async f=>{
+ await f.enable();const run=await f.bots.execute({action:'spawn',task:'Bounded check'},f.exec);
+ let review=null;f.bots.reviewState=id=>id===run.childId?review:null;
+ const waiting=f.bots.execute({action:'wait',timeoutMs:30000},f.exec);
+ while(!f.bots.waiters.get('parent')?.size)await new Promise(resolve=>setImmediate(resolve));
+ review={pending:true,decision:'deny',at:'2000-01-01T00:00:00Z'};f.bots.notifyAgent(run.childId);
+ const result=await waiting;
+ assert.equal(result.timedOut,false);assert.equal(result.tasks[0].activity.state,'reviewing');assert.equal(result.tasks[0].done,false);
+}));
+
+test('model-facing state is bounded while detailed status retains usage, quota causes and dispatch errors',()=>fixture(async f=>{
+ await f.enable();
+ const run=await f.bots.execute({action:'spawn',task:'Bounded check'},f.exec);
+ const events=f.sessions.get(run.childId).snapshotEvents();
+ events.push({seq:2,type:'assistant/message',data:{content:[{type:'text',text:'Partial result'}],usage:{inputTokens:120,outputTokens:10,totalTokens:130,cacheReadTokens:50,cacheWriteTokens:0}}});
+ events.push({seq:3,type:'turn/end',data:{reason:{kind:'error',error:{code:'QUOTA_EXCEEDED',message:'429 soft rate limit, retry after 60 seconds Bearer hidden-credential',status:429,retryAfterMs:60000}}}});
+ const status=await f.bots.execute({action:'status',childId:run.childId},f.exec);
+ assert.equal(status.diagnostics.runtime.status,429);assert.equal(status.diagnostics.runtime.retryAfterMs,60000);
+ assert.equal(status.diagnostics.usage.input,120);assert.equal(status.diagnostics.usage.cacheRead,50);
+ assert(!JSON.stringify(status).includes('hidden-credential'));
+ await f.bots.taskChange(state=>{
+  for(let index=0;index<24;index++)state.runs.push({...completedRecords(state.runs[0].profile,1)[0],id:'extra-'+index,key:'extra-'+index,context:'large repeated input '.repeat(100),progress:[{summary:'old verbose report '.repeat(100)}]});
+  state.runs.push({...completedRecords(state.runs[0].profile,1)[0],id:'dispatch-failure',status:'dispatch-failed',dispatchError:'NATIVE_CHILD_NOT_CREATED',dispatchFailure:'Native activation failed at provider resolution'});
+ });
+ const timeline=await f.bots.execute({action:'timeline'},f.exec);
+ assert.equal(timeline.tasks.length,8);assert(!JSON.stringify(timeline).includes('large repeated input'));
+ const failure=await f.bots.execute({action:'status',taskId:'dispatch-failure'},f.exec);
+ assert.equal(failure.diagnostics.dispatch.code,'NATIVE_CHILD_NOT_CREATED');assert.match(failure.diagnostics.dispatch.message,/provider resolution/);
+ assert(f.bots.timeline('parent').tasks.length>8);
+}));
+
+test('restarting after archive commit and before active-file commit preserves records and stable replay',()=>fixture(async f=>{
+ await f.enable({maxParallel:1,maxTasks:1});
+ const rows=completedRecords(f.bots.taskProfiles('parent').find(profile=>profile.role==='child'));
+ await writeFile(path.join(f.data,'team-tasks.json'),JSON.stringify({version:1,runs:rows,messages:[]}));
+ let bots=await f.reload();const archive=bots.history.archive.bind(bots.history);
+ bots.history.archive=async records=>{await archive(records);throw Error('interrupted before active commit');};
+ await assert.rejects(bots.execute({action:'dispatch',key:'new',tasks:[task('new')]},f.exec),/interrupted/);
+ bots=await f.reload();await bots.execute({action:'dispatch',key:'new',tasks:[task('new')]},f.exec);
+ assert.equal(f.specs.length,1);assert.equal((await bots.execute({action:'status',taskId:'historical-0'},f.exec)).archived,true);
+}));
 
 test('ordinary mode also reuses two members across five assignments instead of accumulating five children',()=>fixture(async f=>{
  await f.enable();await f.bots.execute({action:'dispatch',key:'five-ordinary',tasks:Array.from({length:5},(_,i)=>task('part-'+i))},f.exec);
