@@ -20,6 +20,15 @@ test('lead and members have separate labelled sections and independent row menus
  assert(html.indexOf('aria-label="主智能体"')<html.indexOf('aria-label="子智能体"'));
 });
 
+test('safety context follows the selected child and returns to the coordinator',async()=>{
+ let selected='a',index=0;const observed=[];
+ const qa=await client({...React,useState:initial=>[index++===3?selected:initial,()=>{}],useEffect:callback=>callback()});
+ const data={sessionId:'main',requested:true,coordinator:{name:'Main'},defaults:{},members:[{id:'a',name:'A',enabled:true},{id:'b',name:'B',enabled:true}],timeline:{tasks:[{profile:{id:'a'},childId:'child-a',status:'completed',done:true},{profile:{id:'b'},childId:'child-b',status:'running',done:false}],summary:{}},messages:[]};
+ const store={session:id=>observed.push(id)};
+ for(const value of ['a','b',null]){selected=value;index=0;qa.TeamWorkspace({data,store});}
+ assert.deepEqual(observed,['child-a','child-b','main']);
+});
+
 test('focused member editor preserves other members and exposes the chosen name field',async()=>{
  const qa=await client({...React,useEffect(){}});
  const data={sessionId:'one',revision:2,coordinator:{name:'任务指挥',model:null,effort:null,instructions:''},defaults:{model:null,effort:null},members:[{id:'a',name:'读资料',identity:'read',duties:'report',model:null,effort:null,enabled:true},{id:'b',name:'核验',identity:'verify',duties:'check',model:null,effort:null,enabled:true}]};

@@ -5,6 +5,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {Workspace,wireWorkspace,BUILTIN_SKILLS} from '../lib/workspace.js';
 import {wireGuard,parseReview,readReview,reviewSnapshot} from '../lib/guard.js';
+import {Intelligence} from '../lib/intelligence.js';
 
 async function temporary(fn){const root=await mkdtemp(path.join(tmpdir(),'dsh-capabilities-'));try{await fn(root);}finally{await rm(root,{recursive:true,force:true});}}
 function harness(services){const disposers=[],events=new Map();const ctx={...services,get:k=>services[k],inject(keys,fn){if(keys.every(k=>services[k]))fn(ctx);},on(name,fn){events.set(name,fn);return ()=>events.delete(name);},effect(fn){const off=fn();if(typeof off==='function')disposers.push(off);}};return {ctx,events,dispose:async()=>{for(const off of disposers.reverse())await off();}};}
@@ -92,4 +93,40 @@ test('a reviewer route change during streaming denies execution even after a val
  const h=harness({tools:{guard(){return()=>{};}},workingDirectory:{ensure:async()=>'/project'},llm:{stream(){return(async function*(){model='changed';yield*response({decision:'allow',risk:'low',reason:'bounded tests'});})();}}});
  wireGuard(h.ctx,w);const exec={agent:{session:sessionFixture()},name:'shell',arguments:{cmd:'npm test'},callId:'call',rootCallId:'call',signal:new AbortController().signal};
  const result=await h.events.get('tools/pre-execute')(exec,async()=>({kind:'allow'}));assert.equal(result.kind,'deny');assert.match(result.reason,/设置已改变/);await h.dispose();
+}));
+
+test('the execution guard sends same-model reviews to each actual parent or child request independently',()=>temporary(async root=>{
+ const workspace=new Workspace(root);await workspace.load();const calls=[];
+ const sessions=new Map();
+ const services={sessions,tools:{guard(){return()=>{};}},workingDirectory:{ensure:async()=>'/project'},llm:{stream(options){calls.push({sessionId:options.sessionId,provider:options.provider,model:options.model});return response({decision:'allow',risk:'low',reason:'bounded tests'});}}};
+ const h=harness(services),intelligence=new Intelligence(root,h.ctx);await intelligence.load();
+ workspace.reviewRoute=(agent,request)=>intelligence.reviewRoute(agent.session.id,request);
+ wireGuard(h.ctx,workspace);
+ for(const id of ['main','child-a','child-b']){
+  const session=sessionFixture();session.id=id;
+  if(id!=='main')session.header={...session.header,origin:'subagent',parentSession:'main'};
+  const header=session.requestHeader();header.config={provider:'provider-'+id,model:'model-'+id};session.requestHeader=()=>header;
+  sessions.set(id,{requestHeader:()=>({config:{provider:'stale',model:'stale'}})});
+  await intelligence.configureReview({model:null,effort:null},id);
+  const exec={agent:{session},name:'shell',arguments:{cmd:'npm test'},callId:'call',rootCallId:'call',signal:new AbortController().signal};
+  assert.equal((await h.events.get('tools/pre-execute')(exec,async()=>({kind:'allow'}))).kind,'allow');
+ }
+ assert.deepEqual(calls,['main','child-a','child-b'].map(id=>({sessionId:id,provider:'provider-'+id,model:'model-'+id})));
+ await h.dispose();
+}));
+
+test('global reviewer updates invalidate inheriting approvals while explicit session approvals keep their own route',()=>temporary(async root=>{
+ const workspace=new Workspace(root);await workspace.load();let guard;
+ const sessions=new Map(['local','inherited'].map(id=>{const session=sessionFixture();session.id=id;return [id,session];}));
+ const h=harness({sessions,tools:{guard:callback=>{guard=callback;return()=>{};}},workingDirectory:{ensure:async()=>'/project'},llm:{resolveModelInfo:async()=>({}),stream:()=>response({decision:'allow',risk:'low',reason:'bounded tests'})}});
+ const intelligence=new Intelligence(root,h.ctx);await intelligence.load();
+ workspace.reviewRoute=(agent,request)=>intelligence.reviewRoute(agent.session.id,request);
+ await intelligence.configureReview({model:{provider:'review',model:'global-first'},effort:null},undefined,undefined,'global');
+ await intelligence.configureReview({model:null,effort:null},'local');
+ wireGuard(h.ctx,workspace);
+ const execs=[...sessions.values()].map(session=>({agent:{session},name:'shell',arguments:{cmd:'npm test'},callId:'call',rootCallId:'call',signal:new AbortController().signal}));
+ for(const exec of execs)assert.equal((await h.events.get('tools/pre-execute')(exec,async()=>({kind:'allow'}))).kind,'allow');
+ await intelligence.configureReview({model:{provider:'review',model:'global-second'},effort:null},undefined,undefined,'global');
+ assert.equal(guard(execs[0]),undefined);assert.match(guard(execs[1]),/缺少有效/);
+ await h.dispose();
 }));

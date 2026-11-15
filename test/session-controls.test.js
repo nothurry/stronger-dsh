@@ -75,11 +75,81 @@ test('review settings migrate legacy routing, persist independently and validate
  i=new Intelligence(dir,services);await i.load();assert.deepEqual(i.config.review,{model:legacy.routes.review,effort:null});
  assert.throws(()=>reviewConfig({model:null,effort:'x\n'}));assert.throws(()=>reviewConfig({model:null,effort:null,apiKey:'secret'}));
 }));
+test('session overrides and explicit same-model choices persist independently of global defaults',()=>temporary(async dir=>{
+ let childModel='child-model';
+ const sessions=new Map([
+  ['main',{id:'main',header:{},requestHeader:()=>({config:{provider:'conversation',model:'main-model'}})}],
+  ['child',{id:'child',header:{origin:'subagent',parentSession:'main'},requestHeader:()=>({config:{provider:'conversation',model:childModel}})}],
+  ['other',{id:'other',header:{},requestHeader:()=>({config:{provider:'conversation',model:'other-model'}})}],
+ ]);
+ const ctx={get:key=>({sessions,llm:{resolveModelInfo:async()=>({reasoning:{efforts:[{id:'high'}]}})}}[key])};
+ let service=new Intelligence(dir,ctx);await service.load();
+ await service.configureReview({model:{provider:'review',model:'global-first'},effort:null},undefined,undefined,'global');
+ assert.equal(service.reviewRoute('main').model,'global-first');assert.equal(service.reviewRoute('child').model,'global-first');
+ await Promise.all([
+  service.configureReview({model:{provider:'review',model:'main-only'},effort:'high'},'main'),
+  service.configureReview({model:null,effort:null},'child'),
+ ]);
+ assert.equal(service.reviewRoute('main').model,'main-only');assert.equal(service.reviewRoute('child').model,'child-model');assert.equal(service.reviewRoute('other').model,'global-first');
+ childModel='child-replacement';assert.equal(service.reviewRoute('child').model,'child-replacement');
+ await service.configureReview({model:{provider:'review',model:'global-second'},effort:null},undefined,undefined,'global');
+ assert.equal(service.reviewRoute('main').model,'main-only');assert.equal(service.reviewRoute('child').model,'child-replacement');assert.equal(service.reviewRoute('other').model,'global-second');
+ service=new Intelligence(dir,ctx);await service.load();
+ assert.equal(service.reviewRoute('main').model,'main-only');assert.equal(service.reviewRoute('child').model,'child-replacement');
+ const state=service.view('child');assert.equal(state.reviewSettings.local.model,null);assert.equal(state.reviewSettings.global.model.model,'global-second');assert.equal(state.sessionReviews,undefined);
+ await service.configureReview(null,'child');assert.equal(service.reviewRoute('child').model,'global-second');assert.equal(service.reviewSettings('child').local,null);
+ await assert.rejects(service.configureReview({model:null,effort:null}),/实际会话/);
+ await assert.rejects(service.configureReview({model:null,effort:null},'__proto__'),/实际会话/);
+}));
+
+test('global same-model policy resolves each session independently and uses the actual tool request model',()=>temporary(async dir=>{
+ const sessions=new Map(['a','b','child'].map(id=>[id,{id,header:{},requestHeader:()=>({config:{provider:id,model:id+'-model'}})}]));
+ const ctx={get:key=>key==='sessions'?sessions:undefined};
+ let service=new Intelligence(dir,ctx);await service.load();
+ await service.configureReview({model:null,effort:null},undefined,undefined,'global');
+ for(const id of sessions.keys())assert.deepEqual(service.reviewRoute(id),{provider:id,model:id+'-model'});
+ assert.deepEqual(service.reviewRoute('child',{provider:'actual-child',model:'actual-step'}),{provider:'actual-child',model:'actual-step'});
+ const file=path.join(dir,'intelligence.json'),legacy=JSON.parse(await readFile(file,'utf8'));delete legacy.sessionReviews;
+ await writeFile(file,JSON.stringify(legacy));service=new Intelligence(dir,ctx);await service.load();assert.deepEqual(service.config.sessionReviews,{});
+ assert.deepEqual(service.reviewRoute('b'),{provider:'b',model:'b-model'});
+}));
+
+test('review validation resolves live and persisted pending selections before the last request',()=>temporary(async dir=>{
+ const session={id:'one',header:{},requestHeader:()=>({config:{provider:'old',model:'last'}})};
+ let live=true;const resolved=[];
+ const ctx={get:key=>({sessions:new Map([['one',session]]),agents:{get:()=>live?{model:{current:()=>({provider:'live',model:'next'})}}:undefined},sessionProjections:{snapshot:()=>({values:{modelSelection:{pending:{provider:'persisted',model:'next'},lastUsed:{provider:'old',model:'last'}}}})},llm:{resolveModelInfo:async(provider,model)=>{resolved.push([provider,model]);return {reasoning:{efforts:[{id:'high'}]}};}}}[key])};
+ const service=new Intelligence(dir,ctx);await service.load();
+ await service.configureReview({model:null,effort:'high'},'one');assert.deepEqual(resolved.at(-1),['live','next']);
+ live=false;await service.configureReview({model:null,effort:'high'},'one');assert.deepEqual(resolved.at(-1),['persisted','next']);
+ assert.equal(service.reviewRoute('one',{provider:'actual',model:'running'}).model,'running');
+}));
+
 async function client(react=React,extra={}){
- const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.qa={cacheHitReading,CacheReading};return {name:'dsh-ui-stronger',inject:");
+ const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.qa={cacheHitReading,CacheReading,ReviewSettings};return {name:'dsh-ui-stronger',inject:");
  const window={__ModuleLoader__:{load:b=>b.factory(id=>id==='react'?react:{})}};
  vm.runInNewContext(source,{window,setTimeout,clearTimeout,...extra});return window.qa;
 }
+test('review form saves the chosen scope and blocks fields loaded for a different session',async()=>{
+ for(const scenario of [
+  {scope:'session',model:'',review:{model:null,effort:null}},
+  {scope:'session',model:'inherit',review:null},
+  {scope:'global',model:JSON.stringify({provider:'review',model:'fixed'}),review:{model:{provider:'review',model:'fixed'},effort:null}},
+  {scope:'session',model:'',stale:true},
+ ]){
+  let index=0;const calls=[];
+  const values={0:scenario.scope,1:{key:scenario.scope+'|'+(scenario.stale?'previous':'child'),global:{model:null,effort:null},local:null},3:{provider:'conversation',model:'child-model'},4:scenario.model};
+  const qa=await client({...React,useState:initial=>{const slot=index++;return [Object.hasOwn(values,slot)?values[slot]:initial,()=>{}];},useRef:value=>({current:value}),useEffect(){}});
+  const control=async(action,payload)=>{calls.push({action,payload:JSON.parse(JSON.stringify(payload))});return {reviewSettings:{global:{model:null,effort:null},local:scenario.review}};};
+  const tree=qa.ReviewSettings({control,sessionId:'child'});
+  let saveButton;
+  function find(element){if(!React.isValidElement(element))return;if(element.type==='button'&&element.props.children===(scenario.scope==='global'?'保存全局设置':'保存当前会话设置'))saveButton=element;React.Children.forEach(element.props.children,find);}
+  find(tree);assert(saveButton);assert.equal(saveButton.props.disabled,!!scenario.stale);
+  saveButton.props.onClick();await new Promise(resolve=>setImmediate(resolve));
+  if(scenario.stale)assert.equal(calls.length,0);
+  else assert.deepEqual(calls,[{action:'configureReview',payload:{scope:scenario.scope,sessionId:'child',review:scenario.review}}]);
+ }
+});
+
 test('cache hit percentage has one decimal, includes cache writes and preserves unknown values',async()=>{
  const {cacheHitReading}=await client();
  assert.equal(cacheHitReading({uncachedInputTokens:3,cacheReadTokens:96,cacheWriteTokens:1}),'96.0');

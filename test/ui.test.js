@@ -34,6 +34,23 @@ test('public plugin uses host session data, rejects paths and has no private cap
  try{const s=await m.rpc('status',{});assert.equal(s.value.version,JSON.parse(await readFile(new URL('../package.json',import.meta.url))).version);assert.equal(s.value.edition,'public');assert.equal(s.value.capabilities.voice,false);assert.equal((await m.rpc('preferences',{voice:true})).ok,false);assert.equal((await m.rpc('asset',{path:'secret.png'})).ok,false);assert.equal((await m.rpc('exec',{})).ok,false);assert.equal((await m.rpc('status',{},AbortSignal.abort())).ok,false);assert.equal((await m.rpc('preferences',{motion:false})).value.preferences.motion,false);assert.match((await m.commands.get('ui').handler({rawInput:'status'})).text,/界面增强/);}
  finally{await m.fiber.dispose();assert.equal(m.channels.size,0);assert.equal(m.commands.size,0);await rm(home,{recursive:true,force:true});}
 });
+
+test('review RPC requires an explicit global scope and otherwise persists only the selected session',async()=>{
+ const home=await mkdtemp(path.join(tmpdir(),'review-rpc-')),m=await mount(home);
+ const sessions=new Map(['one','child'].map(id=>[id,{id,header:{id},requestHeader:()=>({config:{provider:'conversation',model:id}})}]));
+ m.ctx.provide('sessions',{get:id=>sessions.get(id)});
+ m.ctx.provide('llm',{resolveModelInfo:async()=>({})});
+ try{
+  const global={model:{provider:'review',model:'global'},effort:null};
+  assert.equal((await m.rpc('configureReview',{scope:'global',review:global})).ok,true);
+  const local=await m.rpc('configureReview',{sessionId:'child',review:{model:null,effort:null}});
+  assert(local.ok);assert.equal(local.value.reviewSettings.local.model,null);assert.equal(local.value.reviewSettings.global.model.model,'global');
+  assert.equal((await m.rpc('intelligence',{sessionId:'one'})).value.reviewSettings.local,null);
+  assert.equal((await m.rpc('configureReview',{review:global})).ok,false);
+  assert.equal((await m.rpc('configureReview',{sessionId:'missing',review:global})).ok,false);
+  assert.equal((await m.rpc('configureReview',{scope:'invalid',sessionId:'child',review:global})).ok,false);
+ }finally{await m.fiber.dispose();await rm(home,{recursive:true,force:true});}
+});
 test('public connection entry validates local resources and binds DSH answer playback',async()=>{
  const home=await mkdtemp(path.join(tmpdir(),'ui-full-')),data=path.join(home,'plugins-data/dsh-ui-stronger');await mkdir(data,{recursive:true});
  const skin=path.join(data,'custom.png'),reference=path.join(data,'ref.wav');await writeFile(skin,Buffer.from([137,80,78,71]));await writeFile(reference,Buffer.alloc(1024));
