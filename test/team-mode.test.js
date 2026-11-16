@@ -7,7 +7,7 @@ import vm from 'node:vm';
 import React from 'react';
 import {Context} from '@deepseek-ai/cordis';
 import {Workbench,wireWorkbench} from '../lib/workbench.js';
-import {Bots} from '../lib/bots.js';
+import {Bots,wireBots} from '../lib/bots.js';
 import {TeamMode,wireTeamMode} from '../lib/team-mode.js';
 import {Intelligence,wireIntelligence} from '../lib/intelligence.js';
 
@@ -31,6 +31,68 @@ async function fixture(run){
 }
 const config=team=>{const row=team.session('main');return {coordinator:structuredClone(row.coordinator),defaults:structuredClone(row.defaults),members:structuredClone(row.members)};};
 const task=(key,extra={})=>({key,profileId:'team-executor',task:'Read the scoped source and report '+key,acceptance:'Provide bounded evidence and a stage report',...extra});
+
+function messageGuards(bots){
+ const guards=[];
+ wireBots({get:()=>null,on(){},effect(){},inject(names,install){
+  if(names.includes('tools'))install({tools:{guard:fn=>guards.push(fn),register(){},get:()=>({output:{schema:{type:'object'}}})},on(){}});
+ }},bots);
+ return exec=>guards.map(guard=>guard(exec)).find(Boolean);
+}
+
+test('native agent-name messaging works in running, completed and ordinary sessions while spawn controls remain',()=>fixture(async f=>{
+ await f.enter();const run=await f.bots.execute({action:'spawn',profileId:'team-executor',task:'Read source',acceptance:'Report evidence'},f.exec);
+ const guard=messageGuards(f.bots);
+ for(const args of [{agent:'member-worker',message:'New evidence'},{agent_id:run.childId,message:'Legacy transport'}]){
+  assert.equal(guard({...f.exec,name:'send_message',arguments:args}),undefined);
+ }
+ assert.match(guard({...f.exec,name:'spawn_agent',arguments:{}}),/dispatch/);
+ f.finish(run.childId);await f.bots.onEvent(f.sessions.get(run.childId),{type:'turn/end'});
+ assert.equal(guard({...f.exec,name:'send_message',arguments:{agent:'member-worker',message:'Clarification after completion'}}),undefined);
+ assert.equal(guard({agent:{session:{id:'ordinary',header:{}}},name:'send_message',arguments:{agent:'existing-worker',message:'Ordinary native continuation'}}),undefined);
+ assert.equal(guard({agent:f.agents.get(run.childId),name:'send_message',arguments:{agent:'root',message:'Progress'}}),undefined);
+ assert.match(guard({agent:f.agents.get(run.childId),name:'spawn_agent',arguments:{}}),/子角色/);
+}));
+
+test('native name resolution continues the same completed child and records collaborative provenance',()=>fixture(async f=>{
+ await f.enter();const run=await f.bots.execute({action:'spawn',profileId:'team-executor',task:'Initial work',acceptance:'Report evidence'},f.exec);
+ f.finish(run.childId);await f.bots.onEvent(f.sessions.get(run.childId),{type:'turn/end'});
+ const original=structuredClone(f.bots.tasks.runs[0]),session=f.sessions.get(run.childId),log=session.snapshotEvents();
+ const guard=messageGuards(f.bots),args={agent:'member-worker',message:'The existing application now exposes its test endpoint.'};
+ assert.equal(guard({...f.exec,name:'send_message',arguments:args}),undefined);
+ let resolved=0,delivered=0;
+ const native={resolveName:async(sender,name)=>{assert.equal(sender,f.parent);assert.equal(name,args.agent);resolved++;return run.childId;},sendMessage:async(sender,target,content)=>{
+  assert.equal(sender,f.parent);assert.equal(target,run.childId);delivered++;
+  log.push({seq:log.length,type:'user/message',data:{source:{kind:'agent-message',senderSessionId:'main'},content}});
+  log.push({seq:log.length,type:'turn/start'});return 'native-message';
+ }};
+ const target=await native.resolveName(f.parent,args.agent);
+ await native.sendMessage(f.parent,target,[{type:'text',text:args.message}]);
+ await f.bots.onEvent(session,log.at(-1));
+ assert.equal(resolved,1);assert.equal(delivered,1);assert.equal(f.activations.length,1);
+ assert.deepEqual(f.bots.tasks.runs[0],original);
+ const followup=f.bots.tasks.runs[1];assert.equal(followup.childId,run.childId);assert.equal(followup.task,'协作消息续接');assert.match(followup.acceptance,/不扩大/);
+ await f.team.trackNativeTurn(session);assert.equal(f.bots.tasks.runs.length,2);
+}));
+
+test('collaboration mailbox can wake a completed existing child without allocating another identity',()=>fixture(async f=>{
+ await f.enter();const run=await f.bots.execute({action:'spawn',profileId:'team-executor',task:'Initial work',acceptance:'Report'},f.exec);
+ f.finish(run.childId);await f.bots.onEvent(f.sessions.get(run.childId),{type:'turn/end'});
+ const result=await f.bots.execute({action:'message',to:run.childId,text:'Additional evidence for your existing scope',key:'supplement',wake:true},f.exec);
+ assert.equal(result.delivery,'delivered');assert.equal(f.activations.filter(row=>!row.reused).length,1);
+ await f.bots.onEvent(f.sessions.get(run.childId),{type:'turn/start'});
+ assert.equal(new Set(f.bots.tasks.runs.map(row=>row.childId)).size,1);
+}));
+
+test('mailbox delivery failures preserve sanitized causes and idempotent replay never resends',()=>fixture(async f=>{
+ await f.enter();const run=await f.bots.execute({action:'spawn',profileId:'team-executor',task:'Initial work',acceptance:'Report'},f.exec);
+ let calls=0;f.services.subagents.sendMessage=async()=>{calls++;throw Object.assign(Error('Service unavailable at https://example.com/private Bearer sensitive-value'),{code:'DELIVERY_UNAVAILABLE',status:503,requestId:'Bearer sensitive-value',provider:'https://example.com/private'});};
+ const args={action:'message',to:run.childId,text:'Supplementary information',key:'delivery-failure',wake:true};
+ const result=await f.bots.execute(args,f.exec);
+ assert.equal(result.delivery,'unknown');assert.equal(result.deliveryError.code,'DELIVERY_UNAVAILABLE');assert.equal(result.deliveryError.status,503);
+ assert(!JSON.stringify(result).includes('sensitive-value'));assert(!JSON.stringify(result).includes('example.com'));
+ const replay=await f.bots.execute(args,f.exec);assert.equal(replay.duplicate,true);assert.deepEqual(replay.deliveryError,result.deliveryError);assert.equal(calls,1);
+}));
 
 test('failed durable task replacement retains committed state and the write queue recovers',()=>fixture(async f=>{
  const file=f.bots.taskFile,blocked=path.join(f.dir,'blocked-target');

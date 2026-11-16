@@ -682,3 +682,15 @@ Windows 当前 DSH 沙箱提供写入限制，返回 partial。第三方插件�
 固定规则识别已覆盖的危险形式，后续仍由语义审查和实际执行后端处理其余操作。参考的安全设计包括 OWASP 的最小权限与完整调解，以及 Microsoft Agent Governance Toolkit 的执行前策略校验。新增策略代码为本项目实现。[OWASP](https://genai.owasp.org/llmrisk/llm062025-excessive-agency/) [Microsoft Agent Governance Toolkit](https://github.com/microsoft/agent-governance-toolkit)
 
 回退操作要求目标会话已在原生运行时加载。重启后仅观察历史、尚未激活的子会话可能需要先通过原生会话入口加载。冷启动子会话的桌面回退尚待正式窗口验证。
+
+## 0.19.36 原生协作消息兼容性
+
+- 修复新版DSH原生send_message使用agent名称，而旧协作规则仍按agent_id拒收的问题。接收方身份解析与团队树关系验证复用宿主原生实现。
+- 已有智能体在运行和空闲状态均可接收补充消息，已完成子会话可续接原身份，原任务历史保留。新增智能体的委派约束、独立执行审查、权限继承及模型限制持续生效。
+- 协作收件箱同步支持已完成子会话续接。投递失败返回脱敏错误码、状态和原因，相同消息key重读保留失败详情并避免重复唤醒。
+- 原生协作消息续接记录其参考来源，保持原任务授权范围。
+- 使用本机真实DSH原生send_message工具验证名称协议、续接和未知接收方错误，模型调用与实际用户消息发送均为零。
+
+本轮参考 LangGraph 对持久化与副作用幂等性的处理，以及 Microsoft Agent Control Specification 对结构化脱敏诊断的约定，完善消息失败重读与投递错误反馈。新增改动由本项目实现。
+
+[LangGraph](https://github.com/langchain-ai/docs/blob/main/src/oss/langgraph/functional-api.mdx) [Microsoft Agent Control Specification](https://github.com/microsoft/agent-governance-toolkit/blob/main/docs/packages/agent-control-specification.md)

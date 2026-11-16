@@ -10,6 +10,21 @@ import {Intelligence} from '../lib/intelligence.js';
 async function temporary(fn){const root=await mkdtemp(path.join(tmpdir(),'dsh-capabilities-'));try{await fn(root);}finally{await rm(root,{recursive:true,force:true});}}
 function harness(services){const disposers=[],events=new Map();const ctx={...services,get:k=>services[k],inject(keys,fn){if(keys.every(k=>services[k]))fn(ctx);},on(name,fn){events.set(name,fn);return ()=>events.delete(name);},effect(fn){const off=fn();if(typeof off==='function')disposers.push(off);}};return {ctx,events,dispose:async()=>{for(const off of disposers.reverse())await off();}};}
 
+test('native agent-name messaging still needs exact-argument execution review and respects denial',()=>temporary(async root=>{
+ const workspace=new Workspace(root);await workspace.load();let guard,allow=false,reviewed;
+ const h=harness({tools:{guard(fn){guard=fn;}},workingDirectory:{ensure:async()=>'/project'},llm:{stream(options){reviewed=JSON.parse(options.messages[0].content[1].text);return response({decision:allow?'allow':'deny',risk:'low',reason:'Current owner scope checked'});}}});
+ wireGuard(h.ctx,workspace);
+ const make=()=>{
+  const exec={agent:{session:sessionFixture()},name:'send_message',schema:{name:'send_message',description:'Send to an existing agent',parameters:{type:'object',properties:{agent:{type:'string'},message:{type:'string'}}}},arguments:{agent:'member-worker',message:'Additional evidence'},callId:'call',rootCallId:'call',signal:new AbortController().signal};
+  Object.assign(exec.agent.session.snapshotEvents().find(event=>event.type==='tool/call').data,{name:exec.name,arguments:exec.arguments});return exec;
+ };
+ const gate=h.events.get('tools/pre-execute'),denied=make();assert.match(guard(denied),/缺少有效/);
+ assert.equal((await gate(denied,async()=>({kind:'allow'}))).kind,'deny');assert.deepEqual(reviewed.action.arguments,denied.arguments);
+ allow=true;const accepted=make();assert.equal((await gate(accepted,async()=>({kind:'allow'}))).kind,'allow');assert.equal(guard(accepted),undefined);
+ accepted.arguments.agent='another-worker';assert.match(guard(accepted),/缺少有效/);
+ await h.dispose();await workspace.dispose();
+}));
+
 test('verified owner settings reach the reviewer and revocation invalidates an existing allow stamp',()=>temporary(async root=>{
  const workspace=new Workspace(root);await workspace.load();let enabled=true,guard,request;
  workspace.ownerPolicy=()=>enabled?{source:'owner-setting',kind:'classified-local-memory',sessionId:'s',cwd:'/project'}:null;

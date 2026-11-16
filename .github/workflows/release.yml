@@ -1,4 +1,4 @@
-# Release 0.19.35: session tools, shared memory and native browser evidence.
+# Release 0.19.36: native agent-name messaging compatibility.
 name: Publish audited release
 on:
   workflow_dispatch:

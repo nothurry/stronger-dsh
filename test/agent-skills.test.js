@@ -120,12 +120,13 @@ test('a reviewer rejection blocks dependents and a changed native result invalid
  f.finish('child-1','Revised result');const revised=await f.execute({action:'status',taskId:row.id});assert.deepEqual(revised.messages,['Revised result']);assert.equal(revised.review,null);
 }));
 
-test('completed workers cannot be reawakened outside dispatch concurrency and task budgets',()=>fixture(async f=>{
+test('completed workers accept supplemental messages while new task dispatch still respects budgets',()=>fixture(async f=>{
  f.bots.state.policies.parent={enabled:true,maxParallel:1,maxTasks:1};
  await f.execute({action:'spawn',key:'one',task:'One task'});f.finish('child-1','Finished');
  await f.bots.onEvent(f.sessions.get('child-1'),{type:'turn/end'});
- await assert.rejects(f.execute({action:'message',to:'child-1',key:'more',text:'Do another task',wake:true}),/已结束/);
- assert.equal(f.bots.tasks.messages.length,0);
+ const delivered=await f.execute({action:'message',to:'child-1',key:'more',text:'Additional evidence for the existing scope',wake:true});
+ assert.equal(delivered.delivery,'delivered');assert.equal(f.bots.tasks.messages.length,1);
+ assert.equal(f.activations.filter(row=>!row.reused).length,1);
  assert.equal((await f.execute({action:'message',to:'child-1',key:'note',text:'Reference note only',wake:false})).status,'stored');
  await assert.rejects(f.execute({action:'spawn',key:'two',task:'Another task'}),/预算/);
 }));
