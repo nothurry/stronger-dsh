@@ -88,7 +88,7 @@ test('normal tool entry preserves old evidence output and denies hidden native c
 
 test('network search requires execution review while local planning and ranking remain local reads',async()=>{
  const guards=[],workspace={state:{guard:true},runtime:{}};
- wireGuard({inject(_names,callback){callback({get(){},tools:{guard:fn=>guards.push(fn)},on(){},effect(){}});}},workspace);
+ wireGuard({effect(){},inject(_names,callback){callback({get(){},tools:{guard:fn=>guards.push(fn)},on(){},effect(){}});}},workspace);
  const agent={session:{id:'one'}};
  assert.match(guards[0]({agent,name:'workspace_world',arguments:{action:'search'}}),/审查/);
  for(const action of ['time','plan','rank','evidence'])assert.equal(guards[0]({agent,name:'workspace_world',arguments:{action}}),undefined);

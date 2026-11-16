@@ -1,0 +1,91 @@
+/**
+ * ui-stronger-rewind client logger: one namespaced, level-filtered channel for every
+ * browser-side diagnostic in this plugin.
+ *
+ * `error` / `warn` are ALWAYS emitted (the anomaly guard: rare, cheap, and
+ * surfaced even for a user who never touched the switch). `info` / `debug` are
+ * gated by the exclusively-own, per-origin `localStorage['ui-stronger-rewind.debug']`
+ * switch and further filtered by namespace. The switch is read on every call
+ * (never cached), so flipping it and reloading takes effect on any published
+ * build without a plugin rebuild.
+ *
+ * Values accepted (empty/unset = off): `ui-stronger-rewind*` — every namespace;
+ * `ui-stronger-rewind:refill` — one subsystem (exact match);
+ * `ui-stronger-rewind:refill,ui-stronger-rewind:visibility` — several (comma-separated).
+ *
+ * @module ui-stronger-rewind/client/log
+ */
+
+/** Stable logger namespace prefix (mirrors the plugin's `name`). */
+const NS = 'ui-stronger-rewind'
+
+/** The exclusively-own localStorage key controlling verbose output. */
+const DEBUG_KEY = 'ui-stronger-rewind.debug'
+
+export type LogLevel = 'error' | 'warn' | 'info' | 'debug'
+
+/** Levels that are emitted unconditionally (the anomaly guard). */
+const ALWAYS_ON: ReadonlySet<LogLevel> = new Set(['error', 'warn'])
+
+/**
+ * Read the DEBUG switch value (null/'' = off). Never throws: localStorage can
+ * be unavailable or throw under certain privacy/teardown windows, and logging
+ * must never break the plugin.
+ */
+function switchValue(): string {
+  try {
+    return window.localStorage.getItem(DEBUG_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Whether namespace `ns` is selected by `value` (the `debug`-package convention):
+ * comma-separated entries, each an exact `ui-stronger-rewind:scope` or a `*`-suffixed
+ * prefix; `*` and `ui-stronger-rewind*` select everything.
+ */
+function matches(value: string, ns: string): boolean {
+  for (const entry of value.split(',')) {
+    const part = entry.trim()
+    if (part === '') continue
+    if (part === '*' || part === `${NS}*`) return true
+    if (part.endsWith('*')) {
+      if (ns.startsWith(part.slice(0, -1))) return true
+    } else if (ns === part) {
+      return true
+    }
+  }
+  return false
+}
+
+/** The tag line every entry starts with, e.g. `[ui-stronger-rewind:refill]`. */
+function tag(scope: string): string {
+  return `[${NS}:${scope}]`
+}
+
+/**
+ * Emit one diagnostic line. `error`/`warn` always print; `info`/`debug` print
+ * only when the DEBUG switch selects the namespace. Both gated levels are
+ * routed to the always-visible `console.info` rather than `console.debug`,
+ * whose "Verbose" level Chrome filters out by default — otherwise a reporter
+ * who turns the switch on still would not see the line without also changing
+ * the DevTools level filter (mapped to `console.debug`). `data` is spread last
+ * so DevTools' structured view keeps it inspectable (never stringified).
+ */
+export function log(level: LogLevel, scope: string, message: string, data?: unknown): void {
+  if (ALWAYS_ON.has(level)) {
+    console[level](tag(scope), message, data)
+    return
+  }
+  if (!matches(switchValue(), `${NS}:${scope}`)) return
+  console.info(tag(scope), message, data)
+}
+
+/** Convenience shorthands (typed so call sites read cleanly). */
+export const rewindLog = {
+  error: (scope: string, message: string, data?: unknown): void => log('error', scope, message, data),
+  warn: (scope: string, message: string, data?: unknown): void => log('warn', scope, message, data),
+  info: (scope: string, message: string, data?: unknown): void => log('info', scope, message, data),
+  debug: (scope: string, message: string, data?: unknown): void => log('debug', scope, message, data),
+} as const

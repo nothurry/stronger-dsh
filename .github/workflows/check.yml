@@ -11,6 +11,8 @@ jobs:
         with:
           node-version: 24
       - run: npm ci --ignore-scripts
+      - run: npm run build:rewind
+      - run: git diff --exit-code -- lib/client.js lib/rewind.js
       - run: npm test
       - run: node lib/check-public.js
       - run: npm pack --ignore-scripts

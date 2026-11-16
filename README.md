@@ -2,7 +2,7 @@
 
 DeepSeek Harness 原生界面与能力扩展。黑、白、淡灰和少量淡紫，轻圆角、纯色、轻阴影。复用 DSH 的模型、订阅、设置、会话、插件、原生压缩和权限系统。
 
-Requires Node 24 and DSH `>=0.2.1-rc.3 <0.3.0-0`. The internal package name remains `dsh-ui-stronger` for compatibility with existing local configuration. Install one copy; do not add it alongside an older copy of the same package.
+Requires Node 24 and DSH `>=0.2.2-rc.3 <0.3.0-0`. The internal package name remains `dsh-ui-stronger` for compatibility with existing local configuration. Install one copy; do not add it alongside an older copy of the same package.
 
 ## 安装与发现
 
@@ -653,3 +653,32 @@ Source and releases contain code and synthetic tests only. MIT license. Issues: 
 - 常规协作查询仅返回活动任务和最近8条结束任务，详细报告、历史和错误按需读取。
 - 390项回归测试通过，包含连续140轮分工、旧满额记录、归档中断恢复、重复派单、历史依赖和详细诊断。
 - 本地历史副本回放中，长会话协作查询响应从约428KB降至16KB。该指标为工具响应字节数，实际token与费用由供应商计量。
+
+## 0.19.35 回退与统一安全基线
+
+- 集成并适配 MIT 开源 dsh-rewind，固定上游提交 536d78816cd753164977537301bf221385de3179，保留许可证和修改来源。
+- 同窗口回退、消息回填、图片恢复、文件影响预览、检查点版本复用、100条检查点保留、按需清理和可选自动清理。
+- 主、子智能体各有独立检查点与回退入口。复用子会话后仍记录后续任务，新增 apply_patch 首次触碰跟踪。
+- 原始日志保留，通过原生 surface 替换撤回模型上下文。文件恢复核对当前原生文件权限，文件预览确认绑定当前会话、目标、内容与安全配置，过期或变化后须重新预览。
+- SHA256 校验备份内容，拒绝硬链接与目录重解析，检测恢复提交前的外部编辑，跨实例恢复锁防止同时恢复。
+- 全局执行审查、工具禁用、供应商与模型开关覆盖全部模式和主子智能体。子智能体文件权限与额外写入目录受父会话约束，权限继承链缺失或循环时停止操作。
+- 安全页可设置全局文件权限上限、禁用工具和单次模型输出上限。跟随 DSH 权限为默认，现有原生审批仍生效。
+- 本机 Windows 实测只读拒绝区内外写入，工作区修改允许区内写入并拒绝区外写入。宿主报告隔离后端为 partial。
+
+### 恢复与隔离边界
+
+文件检查点跟踪 write、edit、apply_patch 的目标，后续消息边界检查已跟踪文件。命令首次创建且从未进入跟踪的文件、外部服务副作用和外发消息均须另行处理。历史检查点不足、超出8MiB、备份损坏或链接变化会报告覆盖缺口。恢复多个文件使用逐文件原子替换，中断后可能有部分文件已恢复。
+
+同工作区有其他智能体运行时，文件恢复要求先停止相关任务。对话回退可独立使用。原始日志及原生搜索导出保留已撤回记录。
+
+Windows 当前 DSH 沙箱提供写入限制，返回 partial。第三方插件和 MCP 进程的内部行为由其执行后端及操作系统权限控制。当前验证覆盖已列测试场景，安全级别受宿主和所选权限等级约束。
+
+### 完全权限的执行护栏
+
+完全权限下持续执行同一套独立模型审查、固定危险效果拦截、全局模型开关和原生审批。固定拦截覆盖整盘格式化与分区破坏、系统和主目录删除、关闭恶意软件防护与防火墙、禁用安全服务、编码 PowerShell 指令，以及直接读取或外传已识别的本机凭据存储。递归删除的未解析变量与命令替换需要先核对实际路径。
+
+主智能体与子智能体均可通过执行反馈读取具体错误码与原因。拒绝审计保存操作身份和原因，命令正文与工具参数留在原生记录中。原生工具服务更换后，新的审查实例独立工作。
+
+固定规则识别已覆盖的危险形式，后续仍由语义审查和实际执行后端处理其余操作。参考的安全设计包括 OWASP 的最小权限与完整调解，以及 Microsoft Agent Governance Toolkit 的执行前策略校验。新增策略代码为本项目实现。[OWASP](https://genai.owasp.org/llmrisk/llm062025-excessive-agency/) [Microsoft Agent Governance Toolkit](https://github.com/microsoft/agent-governance-toolkit)
+
+回退操作要求目标会话已在原生运行时加载。重启后仅观察历史、尚未激活的子会话可能需要先通过原生会话入口加载。冷启动子会话的桌面回退尚待正式窗口验证。

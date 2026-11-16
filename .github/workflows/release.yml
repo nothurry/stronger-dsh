@@ -1,4 +1,4 @@
-# Release 0.19.34: session tools, shared memory and native browser evidence.
+# Release 0.19.35: session tools, shared memory and native browser evidence.
 name: Publish audited release
 on:
   workflow_dispatch:
@@ -16,6 +16,8 @@ jobs:
         with:
           node-version: 24
       - run: npm ci --ignore-scripts
+      - run: npm run build:rewind
+      - run: git diff --exit-code -- lib/client.js lib/rewind.js
       - run: npm test
       - run: node lib/check-public.js
       - name: Pack and audit

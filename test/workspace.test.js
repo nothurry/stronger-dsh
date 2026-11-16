@@ -200,3 +200,18 @@ test('global reviewer updates invalidate inheriting approvals while explicit ses
  assert.equal(guard(execs[0]),undefined);assert.match(guard(execs[1]),/缺少有效/);
  await h.dispose();
 }));
+
+test('replacing a tools service leaves the new reviewer alive and preserves simultaneous scope state',()=>temporary(async root=>{
+ const workspace=new Workspace(root);await workspace.load();const scopes=[];let install,disposeRoot;
+ wireGuard({inject:(_keys,fn)=>install=fn,effect:fn=>disposeRoot=fn()},workspace);
+ const mount=()=>{
+  const events=new Map(),disposers=[];
+  const services={tools:{guard(){}},workingDirectory:{ensure:async()=>'/project'},llm:{stream:()=>response({decision:'allow',risk:'low',reason:'bounded tests'})}};
+  const scope={tools:services.tools,get:name=>services[name],on:(name,fn)=>events.set(name,fn),effect:fn=>disposers.push(fn())};
+  install(scope);const state={gate:events.get('tools/pre-execute'),dispose:()=>disposers.forEach(fn=>fn())};scopes.push(state);return state;
+ };
+ const first=mount(),second=mount();first.dispose();assert.equal(workspace.runtime.guard,true);
+ const exec={agent:{session:sessionFixture()},name:'shell',arguments:{cmd:'npm test'},callId:'call',rootCallId:'call',signal:new AbortController().signal};
+ assert.equal((await second.gate(exec,async()=>({kind:'allow'}))).kind,'allow');
+ second.dispose();assert.equal(workspace.runtime.guard,false);disposeRoot();await workspace.dispose();
+}));

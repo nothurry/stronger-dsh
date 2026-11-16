@@ -1,0 +1,12 @@
+{
+  "repository": "https://github.com/SiriLee/dsh-rewind",
+  "commit": "536d78816cd753164977537301bf221385de3179",
+  "license": "MIT",
+  "changes": [
+    "namespaced integration",
+    "independent subagent checkpoints and owner RPC",
+    "native sandbox validation",
+    "restore conflict checks",
+    "content integrity hashes"
+  ]
+}
