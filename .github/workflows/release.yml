@@ -1,4 +1,4 @@
-# Release 0.19.36: native agent-name messaging compatibility.
+# Release 0.19.37: native agent-name messaging compatibility.
 name: Publish audited release
 on:
   workflow_dispatch:

@@ -694,3 +694,10 @@ Windows 当前 DSH 沙箱提供写入限制，返回 partial。第三方插件�
 本轮参考 LangGraph 对持久化与副作用幂等性的处理，以及 Microsoft Agent Control Specification 对结构化脱敏诊断的约定，完善消息失败重读与投递错误反馈。新增改动由本项目实现。
 
 [LangGraph](https://github.com/langchain-ai/docs/blob/main/src/oss/langgraph/functional-api.mdx) [Microsoft Agent Control Specification](https://github.com/microsoft/agent-governance-toolkit/blob/main/docs/packages/agent-control-specification.md)
+
+## 0.19.37 严格JSON工具结果修复
+
+- 修复workspace_team dispatch在派单后返回含undefined可选字段的消息列表，导致宿主以value is not lossless JSON拒收的问题。
+- 在本插件工具返回边界统一省略缺失的对象可选字段，保留null、空值、任务编号及实际结果。非有限数、循环结构和其他非JSON类型继续报明确错误。
+- 保留派单幂等编号，校验失败后的重复查询和同编号请求不会重复创建子会话。
+- 使用真实DSH严格JSON校验器对3个本地会话的协作快照做只读回放，原快照均不合法，修复后全部通过。模型调用0、任务重跑0、本机任务文件修改0。

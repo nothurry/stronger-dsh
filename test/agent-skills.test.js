@@ -7,7 +7,7 @@ import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
-import {Bots,wireBots} from '../lib/bots.js';
+import {Bots,wireBots,jsonToolResult} from '../lib/bots.js';
 import {Workspace} from '../lib/workspace.js';
 
 async function fixture(run){
@@ -37,6 +37,27 @@ async function fixture(run){
  finally{await bots.close();await workspace.dispose();await rm(directory,{recursive:true,force:true});}
 }
 const task=(key,extra={})=>({key,task:'Inspect source '+key,acceptance:'Cite the source and check actual output',...extra});
+
+test('tool results omit absent object fields and reject lossy JSON values without mutation',()=>{
+ const input={optional:undefined,rows:[{receipt:undefined,done:false}],empty:null};
+ assert.deepEqual(jsonToolResult(input),{rows:[{done:false}],empty:null});assert(Object.hasOwn(input,'optional'));
+ for(const value of [NaN,Infinity,-0,1n,()=>{},[undefined],new Date()])assert.throws(()=>jsonToolResult(value),/JSON/);
+ const cycle={};cycle.self=cycle;assert.throws(()=>jsonToolResult(cycle),/JSON/);
+ const prototypeKey=JSON.parse('{"__proto__":{"safe":true}}');const result=jsonToolResult(prototypeKey);assert.equal(Object.getPrototypeOf(result),Object.prototype);assert.deepEqual(result,prototypeKey);
+});
+
+test('dispatch with unread receipts returns lossless JSON and duplicate plan never starts another child',()=>fixture(async f=>{
+ f.bots.state.policies.parent={enabled:true,maxParallel:2,maxTasks:8};
+ const check=value=>{assert.deepEqual(JSON.parse(JSON.stringify(value)),value);return value;};
+ check(await f.execute({action:'spawn',key:'initial',task:'Initial work'}));
+ check(await f.execute({action:'message',to:'child-1',key:'pending-receipt',text:'Supplemental evidence',wake:false}));
+ const args={action:'dispatch',key:'lossless-plan',tasks:[task('lossless-task')]};
+ const first=check(await f.execute(args)),count=f.activations.length;
+ assert(first.messages.length);assert(!Object.hasOwn(first.messages[0],'acknowledgedAt'));
+ check(await f.execute(args));assert.equal(f.activations.length,count);
+ for(const action of ['catalog','timeline','inbox'])check(await f.execute({action}));
+ check(await f.execute({action:'status',taskId:first.tasks[0].id}));
+}));
 
 test('task-oriented skill discovery returns only permitted enabled summaries and keeps memory snapshots stable',()=>fixture(async f=>{
  const active=await f.workspace.propose('skill',{name:'local-sampling',title:'Sampling',description:'sampling dataset checks',content:'LOCAL PROCEDURE BODY',scope:'workspace'},{human:true,cwd:'/work'});
