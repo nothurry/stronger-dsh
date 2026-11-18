@@ -7,7 +7,7 @@ const vendor = path.join(root, "vendor/rewind/src");
 await build({ entryPoints: [path.join(vendor, "index.ts")], outfile: path.join(root, "lib/rewind.js"), bundle: true,
   absWorkingDir: root, format: "esm", platform: "node", target: "es2024", external: ["@deepseek-ai/*"], legalComments: "inline", banner: { js: "/* MIT code adapted from SiriLee/dsh-rewind. See THIRD_PARTY_NOTICES.md. */" } });
 const client = await build({ entryPoints: [path.join(vendor, "client/index.ts")], bundle: true,
-  absWorkingDir: root, format: "cjs", platform: "browser", target: "es2020", write: false, external: ["react", "react-dom", "@deepseek-ai/dsh-client-ui-primitives"], jsx: "transform", jsxFactory: "React.createElement", jsxFragment: "React.Fragment", define: { __DSH_REWIND_VERSION__: JSON.stringify("0.19.37"), __DSH_REWIND_BUILD__: JSON.stringify("536d7881-adapted") } });
+  absWorkingDir: root, format: "cjs", platform: "browser", target: "es2020", write: false, external: ["react", "react-dom", "@deepseek-ai/dsh-client-ui-primitives"], jsx: "transform", jsxFactory: "React.createElement", jsxFragment: "React.Fragment", define: { __DSH_REWIND_VERSION__: JSON.stringify("0.19.38"), __DSH_REWIND_BUILD__: JSON.stringify("536d7881-adapted") } });
 const file = path.join(root, "lib/client.js");
 let source = await readFile(file, "utf8");
 const start = " /* BEGIN REWIND BUNDLE */", end = " /* END REWIND BUNDLE */";

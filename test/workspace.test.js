@@ -152,7 +152,7 @@ test('large reference data cannot displace the newest human restriction; incompl
  events[0].data.content[0].text='A'.repeat(41000);snap=reviewSnapshot({agent:{session},name:'shell',rootCallId:'call',arguments:{cmd:'npm test'}},'/project');assert(snap.payload.history.some(x=>x.text==='Stop. Do not modify any files.'));assert.equal(snap.payload.historyTruncated,true);
 });
 test('guard is fail closed, monotonic, reviews exact arguments and rejects mutation/bypass after allow',()=>temporary(async root=>{
- const w=new Workspace(root);await w.load();let guard,options,fail=false,decision={decision:'allow',risk:'low',reason:'tests requested'};const h=harness({tools:{guard(fn){guard=fn;return ()=>{};}},workingDirectory:{ensure:async()=>'/project'},llm:{stream(o){options=o;assert.equal(w.reviewState(o.sessionId).pending,true);if(fail)throw new Error('network down');return response(decision);}}});wireGuard(h.ctx,w);const gate=h.events.get('tools/pre-execute'),create=()=>({agent:{session:sessionFixture()},name:'shell',arguments:{cmd:'npm test'},callId:'call',rootCallId:'call',signal:new AbortController().signal});
+ const w=new Workspace(root);await w.load();let guard,options,fail=false,decision={decision:'allow',risk:'low',reason:'tests requested'};const h=harness({tools:{guard(fn){guard=fn;return ()=>{};}},workingDirectory:{ensure:async()=>'/project'},llm:{stream(o){options=o;assert.equal(w.reviewState('one').pending,true);assert.match(o.sessionId,/^tool-review-/);if(fail)throw new Error('network down');return response(decision);}}});wireGuard(h.ctx,w);const gate=h.events.get('tools/pre-execute'),create=()=>({agent:{session:sessionFixture()},name:'shell',arguments:{cmd:'npm test'},callId:'call',rootCallId:'call',signal:new AbortController().signal});
  const missing=create();missing.agent=undefined;assert.equal((await gate(missing,async()=>({kind:'allow'}))).kind,'deny');
  const exec=create();assert.match(guard(exec),/缺少有效/);assert.equal((await gate(exec,async()=>({kind:'allow'}))).kind,'allow');assert.equal(guard(exec),undefined);assert.equal(w.reviewState(exec.agent.session.id).pending,false);assert(options.messages[0].content[1].text.includes('npm test'));exec.arguments.cmd='delete everything';assert.match(guard(exec),/缺少有效/);
  decision={decision:'deny',risk:'medium',reason:'Not authorized'};assert.equal((await gate(create(),async()=>({kind:'allow'}))).kind,'deny');const deniedId=create().agent.session.id;assert.equal(w.reviewFeedback(deniedId).reason,'Not authorized');assert.match(w.reviewFeedback(deniedId).next,/重新|新参数/);assert.equal(w.reviewFeedback('another-session').available,false);decision={decision:'allow',risk:'low',reason:'ok'};assert.equal((await gate(create(),async()=>({kind:'deny',reason:'native rejection'}))).reason,'native rejection');const oversized=create();oversized.agent.session.snapshotEvents()[0].data.content[0].text='A'.repeat(41000);assert.equal((await gate(oversized,async()=>({kind:'allow'}))).kind,'deny');assert.match(guard(oversized),/缺少有效/);fail=true;assert.equal((await gate(create(),async()=>({kind:'allow'}))).kind,'deny');const log=await readFile(path.join(root,'review-audit.jsonl'),'utf8');assert(!log.includes('npm test'));await h.dispose();
@@ -196,7 +196,7 @@ test('the execution guard sends same-model reviews to each actual parent or chil
   const exec={agent:{session},name:'shell',arguments:{cmd:'npm test'},callId:'call',rootCallId:'call',signal:new AbortController().signal};
   assert.equal((await h.events.get('tools/pre-execute')(exec,async()=>({kind:'allow'}))).kind,'allow');
  }
- assert.deepEqual(calls,['main','child-a','child-b'].map(id=>({sessionId:id,provider:'provider-'+id,model:'model-'+id})));
+ assert.deepEqual(calls.map(({provider,model})=>({provider,model})),['main','child-a','child-b'].map(id=>({provider:'provider-'+id,model:'model-'+id})));assert.equal(new Set(calls.map(call=>call.sessionId)).size,3);assert(calls.every(call=>call.sessionId.startsWith('tool-review-')));
  await h.dispose();
 }));
 
@@ -229,4 +229,17 @@ test('replacing a tools service leaves the new reviewer alive and preserves simu
  const exec={agent:{session:sessionFixture()},name:'shell',arguments:{cmd:'npm test'},callId:'call',rootCallId:'call',signal:new AbortController().signal};
  assert.equal((await second.gate(exec,async()=>({kind:'allow'}))).kind,'allow');
  second.dispose();assert.equal(workspace.runtime.guard,false);disposeRoot();await workspace.dispose();
+}));
+
+test('ordinary review sends exact action and authority without reference facts or obsolete history hashes',()=>temporary(async root=>{
+ const workspace=new Workspace(root);await workspace.load();const requests=[];
+ const h=harness({tools:{guard(){}},workingDirectory:{ensure:async()=>'/project'},llm:{stream(options){requests.push(options);return response({decision:'allow',risk:'low',reason:'bounded tests'});}}});
+ wireGuard(h.ctx,workspace);
+ const session=sessionFixture(),exec={agent:{session},name:'shell',arguments:{cmd:'npm test'},callId:'call',rootCallId:'call',signal:new AbortController().signal};
+ try{
+  const gate=h.events.get('tools/pre-execute');assert.equal((await gate(exec,async()=>({kind:'allow'}))).kind,'allow');
+  const transmitted=JSON.parse(requests[0].messages[0].content[1].text);assert.deepEqual(transmitted.action.arguments,{cmd:'npm test'});assert.deepEqual(transmitted.recentToolFacts,[]);assert.deepEqual(transmitted.history.map(row=>row.role),['human-instruction']);
+  session.snapshotEvents()[0].data.content[0].text='A'.repeat(50000);
+  assert.equal((await gate(exec,async()=>({kind:'allow'}))).kind,'deny');assert.equal(requests.length,1);assert.equal(workspace.lastReview.failureCode,'REVIEW_EVIDENCE_BUDGET');
+ }finally{await h.dispose();await workspace.dispose();}
 }));

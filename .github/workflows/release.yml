@@ -1,4 +1,4 @@
-# Release 0.19.37: native agent-name messaging compatibility.
+# Release 0.19.38: independent team permission review.
 name: Publish audited release
 on:
   workflow_dispatch:
@@ -33,4 +33,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           version=$(node -p 'JSON.parse(require("fs").readFileSync("package.json")).version')
-          gh release create "v$version" "dist/dsh-ui-stronger-$version.tgz" "dist/dsh-ui-stronger-$version.sha256" --target "$GITHUB_SHA" --title "Stronger DSH $version" --notes "Adds immediate collaboration layout, opt-in shared memory and persona flexibility, current-session scheduled delivery through native DSH, scoped review feedback and OCR evidence. Public source contains no private character, voice model, audio or user data. See README for discovery source and safety limitations."
+          gh release create "v$version" "dist/dsh-ui-stronger-$version.tgz" "dist/dsh-ui-stronger-$version.sha256" --target "$GITHUB_SHA" --title "Stronger DSH $version" --notes "Adds opt-in independent permission review for team tools and their descendants. Each operation receives a fresh scoped decision. See README for configuration, evidence budgets, and isolation limits."
