@@ -1,4 +1,4 @@
-# Release 0.19.38: independent team permission review.
+# Release 0.19.39: compacted authorization and media isolation.
 name: Publish audited release
 on:
   workflow_dispatch:
@@ -33,4 +33,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           version=$(node -p 'JSON.parse(require("fs").readFileSync("package.json")).version')
-          gh release create "v$version" "dist/dsh-ui-stronger-$version.tgz" "dist/dsh-ui-stronger-$version.sha256" --target "$GITHUB_SHA" --title "Stronger DSH $version" --notes "Adds opt-in independent permission review for team tools and their descendants. Each operation receives a fresh scoped decision. See README for configuration, evidence budgets, and isolation limits."
+          gh release create "v$version" "dist/dsh-ui-stronger-$version.tgz" "dist/dsh-ui-stronger-$version.sha256" --target "$GITHUB_SHA" --title "Stronger DSH $version" --notes "Retains current branch restrictions across compaction and isolates OCR requests and local voice redirects. See README for verification and limits."

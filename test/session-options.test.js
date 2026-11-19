@@ -69,7 +69,7 @@ test('ambiguous native task failure is retained for review and never automatical
 
 test('OCR uses selected native image route and returns untrusted text evidence, with strict upload and capability bounds',()=>fixture(async dir=>{
  let seen;const session=makeSession('one'),agent={session};
- const llm={resolveModelInfo:async()=>({inputModalities:['text','image'],defaultMaxTokens:2048}),stream(options){seen=options;return(async function*(){yield{type:'text-delta',text:'Invoice 123'};yield{type:'finish',reason:{kind:'stop'}};})();}};
+ const llm={resolveModelInfo:async()=>({inputModalities:['text','image'],defaultMaxTokens:2048}),stream(options){seen=options;return(async function*(){yield{type:'text-delta',index:0,text:'Invoice 123'};yield{type:'finish',reason:{kind:'stop'}};})();}};
  const ctx={get:name=>({agents:new Map([['one',agent]]),llm,attachments:{saveImages:async()=>[{attachmentId:'sha256:demo',width:10,height:10,mediaType:'image/png'}]}}[name])};
  const bridge=new EvidenceBridge(dir,ctx);await bridge.load();await bridge.configure({provider:'private-route',model:'ocr-model'});
  const result=await bridge.uploaded('one',[{data:Buffer.from('test').toString('base64'),mediaType:'image/png'}]);

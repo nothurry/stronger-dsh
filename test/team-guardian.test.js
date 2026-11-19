@@ -109,6 +109,7 @@ test('configuration rejects reserved team keys and changed tool semantics invali
 test('compacted restrictions remain visible to reviewers but cannot grant permission',()=>fixture(async f=>{
  await f.guardian.configure('main',f.config,0);const root=f.sessions.get('main');
  root.snapshotEvents().push({seq:4,type:'user/message',data:{source:{kind:'user',rpcId:'owner'},content:[{type:'text',text:'Never upload the project guide.'}]}});
+ root.snapshotEvents().push({seq:5,type:'compaction/start',data:{compactionId:'compact'}},{seq:6,type:'compaction/summary',data:{compactionId:'compact',shadowedSeqs:[4]}},{seq:7,type:'user/message',data:{source:{kind:'compact-checkpoint',compactionId:'compact'}},sourceEventSeqs:[5,6,4]});root.surface.nodes.push(7);
  await f.guardian.review(f.exec('child'));const evidence=JSON.parse(f.calls[0].messages[0].content[0].text);
  assert(evidence.authorization.some(row=>row.seq===4&&row.role==='historical-constraint-only'));assert.equal(evidence.cwd,root.header.cwd);
  delete f.sessions.get('child').header.parentSession;await assert.rejects(f.guardian.review(f.exec('child')),/主会话身份/);
@@ -118,4 +119,30 @@ test('unresolved workspace cancellation stops before any supervisor request',()=
  await f.guardian.configure('main',f.config,0);f.services.workingDirectory.ensure=()=>new Promise(()=>{});
  const pending=f.guardian.review(f.exec());const refused=assert.rejects(pending);
  await f.guardian.pause('main');await refused;assert.equal(f.calls.length,0);assert.equal(f.guardian.pending.size,0);
+}));
+
+test('exact operation cap rejects before either reviewer without pausing unrelated valid work',()=>fixture(async f=>{
+ await f.guardian.configure('main',f.config,0);const exec=f.exec();
+ exec.arguments.path='x'.repeat(13000);exec.agent.session.snapshotEvents()[2].data.arguments={...exec.arguments};
+ let ordinaryCalls=0;const result=await f.guardian.review(exec,null,async()=>{ordinaryCalls++;return {kind:'allow'};});
+ assert.equal(result.info.code,'TEAM_OPERATION_BUDGET');assert.equal(ordinaryCalls,0);assert.equal(f.calls.length,0);
+ const last=f.guardian.view('main').last;assert.equal(last.submitted,false);assert.equal(last.teamPaused,false);assert.equal(last.actorRole,'main');assert(!f.guardian.approved(exec));
+ exec.agent.session.snapshotEvents()[2].data.arguments={path:'guide.md'};
+ await f.guardian.review(f.exec());assert.equal(f.calls.length,1);
+}));
+
+test('a denial by the previous gate avoids the second call and logs the acting child',()=>fixture(async f=>{
+ await f.guardian.configure('main',f.config,0);let previous=0;const exec=f.exec('child');
+ await assert.rejects(f.guardian.review(exec,null,async()=>{previous++;return {kind:'deny',reason:'Denied by preceding layer'};}),/暂停/);
+ assert.equal(previous,1);assert.equal(f.calls.length,0);
+ const last=f.guardian.view('main').last;assert.equal(last.actorRole,'child');assert.equal(last.actorName,'子智能体');assert.equal(last.failureCode,'TEAM_PREVIOUS_GATE');assert.equal(last.submitted,false);assert.equal(last.teamPaused,true);
+}));
+
+test('the independent submission window does not reset on resume or create reusable approvals',()=>fixture(async f=>{
+ await f.guardian.configure('main',f.config,0);const root=f.sessions.get('main');
+ root.snapshotEvents()[0].data.content[0].text+=' '.repeat(21500);
+ for(let i=0;i<4;i++)await f.guardian.review(f.exec());
+ assert.equal(f.calls.length,4);await f.guardian.pause('main');await f.guardian.resume('main',f.guardian.view('main').revision);
+ const exec=f.exec(),result=await f.guardian.review(exec);
+ assert.equal(result.info.code,'TEAM_RATE_BUDGET');assert.equal(f.calls.length,4);assert.equal(f.guardian.view('main').paused,false);assert.equal(f.guardian.approved(exec),false);
 }));
