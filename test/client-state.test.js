@@ -92,7 +92,7 @@ test('child status distinguishes interaction, completion, stopping and output li
  assert.equal(qa.teamActivity({pendingInteraction:{kind:'question'}},null).label,'待回复');
  assert.equal(qa.teamActivity({pendingInteraction:{kind:'approval'}},null).label,'待审核');
  assert.equal(qa.teamActivity({pendingInteraction:{}},null).label,'待处理');
- assert.equal(qa.teamActivity(undefined,{done:true,status:'stop',requireReview:true}).label,'待验收');
+ assert.equal(qa.teamActivity(undefined,{done:true,status:'stop',requireReview:true}).label,'已完成');
  assert.equal(qa.teamActivity(undefined,{done:true,status:'aborted'}).label,'已停止');
  assert.equal(qa.teamActivity(undefined,{done:true,status:'max-tokens'}).label,'需继续');
  assert.equal(qa.teamActivity(undefined,{done:true,status:'error',runError:{code:'QUOTA',message:'429 frequency limit'}}).label,'被限流');

@@ -564,3 +564,43 @@ test('child inspection skips inherited turns and preserves the current terminal 
  await f.bots.inspect(f.bots.tasks.runs[0]);const row=f.bots.timeline('main').tasks[0];
  assert.equal(row.status,'error');assert.equal(row.done,true);assert.equal(row.runError.code,'QUOTA');assert.match(row.runError.message,/frequency limit/);
 }));
+import {SafetyPolicy} from '../lib/safety.js';
+
+test('member permission follows live parent, cannot escalate, and Auto cannot silently disappear',()=>fixture(async f=>{
+ await f.enter();
+ const {ctx,services,team,session,sessions,agents}=f;
+ const child={id:'permission-child',header:{origin:'subagent',parentSession:'main',cwd:f.dir},isOwnSeq:()=>true,snapshotEvents:()=>[{seq:0,type:'sandbox/mode',data:{mode:'read-only',source:'delegation'}}]};
+ session.header.cwd=f.dir;sessions.set(child.id,child);agents.set(child.id,{session:child});
+ f.bots.tasks.runs.push({childId:child.id,parent:'main',team:true,profile:{id:'team-executor'}});
+ let parentMode='workspace-write',parentPreset='workspace-write';
+ const original=({session,mode})=>({mode:mode??(session===child?'read-only':parentMode),workspaceRoot:f.dir});
+ const safety=new SafetyPolicy(f.dir,ctx);await safety.load();safety.memberPermission=s=>team.memberPermission(s);
+ services.sandboxPolicy={resolve:request=>safety.resolve(original,request)};
+ services.permissionPresets={names:['read-only','workspace-write','danger-full-access','auto']};
+ const native=s=>team.nativePermissionPreset(services.permissionPresets,s=>s===child?'custom':parentPreset,s);
+ const get=()=>services.sandboxPolicy.resolve({session:child});
+ const save=mode=>team.setMemberPermission('main','team-executor',mode,team.session('main').revision);
+ assert.equal(get().mode,'workspace-write');await assert.rejects(save('danger-full-access'),/不能高于/);
+ await save('read-only');assert.equal(get().mode,'read-only');
+ assert.equal(services.sandboxPolicy.resolve({session:child,mode:'danger-full-access'}).mode,'read-only');
+ parentMode='danger-full-access';parentPreset='auto';assert.equal(get().mode,'read-only');assert.equal(native(child),'auto');
+ await save('auto');assert.equal(get().mode,'danger-full-access');assert.equal(native(child),'auto');
+ services.permissionPresets.names.pop();
+ assert.throws(()=>safety.check({agent:agents.get(child.id),name:'safe',arguments:{}}),/自动审查已停用/);
+ await save('inherit');parentMode='read-only';assert.equal(get().mode,'read-only');
+ const reload=new TeamMode(f.dir,ctx,f.bots,f.workbench);await reload.load();assert.equal(reload.memberPermission(child).mode,'inherit');
+ await assert.rejects(team.setMemberPermission('main','team-executor','inherit',0),/配置已变化/);
+ await assert.rejects(team.setMemberPermission(child.id,'team-executor','inherit',0),/主会话/);
+ const configuration=config(team);configuration.memberPermissions={'team-executor':'danger-full-access'};
+ await assert.rejects(team.execute({action:'configure_team',revision:team.session('main').revision,configuration},f.exec),/未知字段/);
+}));
+
+test('completed execution is not a live approval while true review and revisions remain distinct',async()=>{
+ const source=(await readFile(new URL('../lib/client.js',import.meta.url),'utf8')).replace("return {name:'dsh-ui-stronger',inject:","window.activity=teamActivity;return {name:'dsh-ui-stronger',inject:");
+ const window={__ModuleLoader__:{load:bundle=>bundle.factory(id=>id==='react'?React:{})}};vm.runInNewContext(source,{window});
+ const task={done:true,status:'completed',requireReview:true},status=window.activity({running:false},task,true);
+ assert.equal(status.label,'已完成');assert.match(status.detail,/等待主智能体复核/);
+ assert.equal(window.activity({running:false},{...task,review:{decision:'changes-requested'}},true).label,'需修正');
+ assert.equal(window.activity({running:true,pendingInteraction:{kind:'permission'}},task,true).label,'待审核');
+ assert.equal(window.activity({running:true},task,true).label,'工作中');
+});

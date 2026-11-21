@@ -76,7 +76,7 @@ test('per-agent status follows actual native work and pending approval without m
  assert.equal(qa.teamActivity({running:true},null).label,'工作中');
  assert.equal(qa.teamActivity({running:true,pendingInteraction:{key:'approval'}},null).label,'待审核');
  assert.equal(qa.teamActivity(undefined,{done:false,status:'running'},true,{pending:true}).label,'审查中');
- assert.equal(qa.teamActivity(undefined,{done:true,status:'completed',requireReview:true}).label,'待验收');
+ assert.equal(qa.teamActivity(undefined,{done:true,status:'completed',requireReview:true}).label,'已完成');
  assert.equal(qa.teamActivity(undefined,{done:false,status:'running'},true,{decision:'deny'}).label,'审查拒绝');
  assert.equal(qa.teamActivity(undefined,{done:false,status:'running'},true,{decision:'deny',outcome:'incomplete'}).label,'审查失败');
  const data={sessionId:'main',requested:true,coordinator:{name:'主控'},defaults:{},members:[{id:'worker',name:'资料研究员',enabled:true}],timeline:{tasks:[{profile:{id:'worker'},childId:'child',status:'running',done:false}],summary:{running:1}},messages:[]};

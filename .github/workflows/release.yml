@@ -1,4 +1,4 @@
-# Release 0.19.39: compacted authorization and media isolation.
+# Release 0.19.40: team permissions and completion status.
 name: Publish audited release
 on:
   workflow_dispatch:
