@@ -5,6 +5,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {TeamGuardian,guardianVerdict} from '../lib/team-guardian.js';
 import {reviewSchema} from '../lib/guard.js';
+import {ReviewScopes} from '../lib/review-scope.js';
 const allow={decision:'allow',risk:'low',reason:'Bounded authorized read',checks:['Exact target and readonly effects verified'],alternatives:[],remediation:'No defect detected in this action. Verify expected output.'};
 async function* response(value){yield {type:'block-end',index:0,block:{type:'text',text:JSON.stringify(value)}};yield {type:'finish',reason:{kind:'stop'}};}
 async function fixture(run){
@@ -145,4 +146,23 @@ test('the independent submission window does not reset on resume or create reusa
  assert.equal(f.calls.length,4);await f.guardian.pause('main');await f.guardian.resume('main',f.guardian.view('main').revision);
  const exec=f.exec(),result=await f.guardian.review(exec);
  assert.equal(result.info.code,'TEAM_RATE_BUDGET');assert.equal(f.calls.length,4);assert.equal(f.guardian.view('main').paused,false);assert.equal(f.guardian.approved(exec),false);
+}));
+
+test('team scope confirmation replaces only the selected child history; later parent restrictions stay in evidence',()=>fixture(async f=>{
+ await f.guardian.configure('main',f.config,0);
+ const child=f.sessions.get('child'),main=f.sessions.get('main');
+ child.snapshotEvents()[0].data.content[0].text='Old child scope. '.repeat(2200);
+ const scopes=new ReviewScopes(child.header.cwd,{get:name=>f.services[name]});await scopes.load();
+ f.guardian.reviewScopeFor=(...args)=>scopes.current(...args);
+ await assert.rejects(f.guardian.review(f.exec('child')),/暂停/);assert.equal(f.calls.length,0);
+ assert.equal(f.guardian.view('main').last.failureCode,'TEAM_AUTHORITY_BUDGET');
+ await scopes.confirm('child','Read only the guide.',scopes.preview('child').token);
+ const newer={seq:3,type:'user/message',data:{source:{kind:'user',rpcId:'parent-new'},content:[{type:'text',text:'Do not send results off the local machine.'}]}};
+ main.snapshotEvents().push(newer);main.surface.nodes.push(newer.seq);
+ await f.guardian.resume('main',f.guardian.state.revision);
+ await f.guardian.review(f.exec('child'));
+ const evidence=JSON.parse(f.calls[0].messages[0].content[0].text);
+ assert(evidence.authorization.some(row=>row.session==='child'&&row.role==='owner-confirmed-scope'));
+ assert(evidence.authorization.some(row=>row.session==='main'&&row.seq===3));
+ assert(!JSON.stringify(evidence).includes('Old child scope'));
 }));

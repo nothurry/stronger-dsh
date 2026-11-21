@@ -1,4 +1,4 @@
-# Release 0.19.40: team permissions and completion status.
+# Release 0.19.41: scoped authorization for long review histories.
 name: Publish audited release
 on:
   workflow_dispatch:

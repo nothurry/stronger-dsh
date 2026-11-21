@@ -5,6 +5,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {Workspace,wireWorkspace,BUILTIN_SKILLS} from '../lib/workspace.js';
 import {wireGuard,parseReview,readReview,reviewSnapshot,reviewMessage} from '../lib/guard.js';
+import {ReviewScopes} from '../lib/review-scope.js';
 import {Intelligence} from '../lib/intelligence.js';
 
 async function temporary(fn){const root=await mkdtemp(path.join(tmpdir(),'dsh-capabilities-'));try{await fn(root);}finally{await rm(root,{recursive:true,force:true});}}
@@ -240,6 +241,48 @@ test('ordinary review sends exact action and authority without reference facts o
   const gate=h.events.get('tools/pre-execute');assert.equal((await gate(exec,async()=>({kind:'allow'}))).kind,'allow');
   const transmitted=JSON.parse(requests[0].messages[0].content[1].text);assert.deepEqual(transmitted.action.arguments,{cmd:'npm test'});assert.deepEqual(transmitted.recentToolFacts,[]);assert.deepEqual(transmitted.history.map(row=>row.role),['human-instruction']);
   session.snapshotEvents()[0].data.content[0].text='A'.repeat(50000);
-  assert.equal((await gate(exec,async()=>({kind:'allow'}))).kind,'deny');assert.equal(requests.length,1);assert.equal(workspace.lastReview.failureCode,'REVIEW_EVIDENCE_BUDGET');
+  assert.equal((await gate(exec,async()=>({kind:'allow'}))).kind,'deny');assert.equal(requests.length,1);assert.equal(workspace.lastReview.failureCode,'REVIEW_AUTHORITY_BUDGET');
+ }finally{await h.dispose();await workspace.dispose();}
+}));
+
+test('same-session confirmation restores bounded review after accumulated authorizations and never runs the old call',()=>temporary(async root=>{
+ const workspace=new Workspace(root);await workspace.load();const requests=[];let risk='low';
+ const session=sessionFixture(),calls=session.snapshotEvents(),first=calls[0];first.data.content[0].text='Previous scoped instructions. '.repeat(1800);
+ const scopes=new ReviewScopes(root,{get(name){if(name==='sessions')return new Map([[session.id,session]]);}});await scopes.load();
+ workspace.reviewScopeFor=(...args)=>scopes.current(...args);
+ const h=harness({tools:{guard(){}},workingDirectory:{ensure:async()=>'/project'},llm:{stream(options){requests.push(options);return response({decision:'allow',risk,reason:'synthetic bounded review'});}}});
+ wireGuard(h.ctx,workspace);
+ const exec={agent:{session},name:'shell',arguments:{cmd:'npm test'},callId:'call',rootCallId:'call',signal:new AbortController().signal};
+ try{
+  const gate=h.events.get('tools/pre-execute'),allow=async()=>({kind:'allow'});
+  assert.equal((await gate(exec,allow)).kind,'deny');assert.equal(workspace.lastReview.failureCode,'REVIEW_AUTHORITY_BUDGET');
+  const stale=scopes.preview(session.id);
+  const later={seq:3,type:'user/message',data:{source:{kind:'user',rpcId:'late'},content:[{type:'text',text:'Never use the network.'}]}};
+  calls.push(later);session.surface.nodes.push(later.seq);await assert.rejects(scopes.confirm(session.id,'Run local tests only.',stale.token),/已改变/);
+  await scopes.confirm(session.id,'Run local tests only. Never use the network.',scopes.preview(session.id).token);
+  assert.equal(requests.length,0);
+  const event={seq:4,type:'user/message',data:{source:{kind:'user',rpcId:'new'},content:[{type:'text',text:'Do not modify files.'}]}};
+  calls.push(event);session.surface.nodes.push(event.seq);
+  assert.equal((await gate({...exec},allow)).kind,'allow');
+  const evidence=JSON.parse(requests.at(-1).messages[0].content[1].text);
+  assert.deepEqual(evidence.history.map(row=>row.role),['owner-confirmed-scope','human-instruction']);
+  assert.equal(evidence.history[1].text,'Do not modify files.');assert.equal(evidence.action.arguments.cmd,'npm test');
+  assert(JSON.stringify(evidence).length<1000);
+  risk='medium';assert.equal((await gate({...exec},allow)).kind,'deny');
+  const restored=new ReviewScopes(root,scopes.ctx);await restored.load();assert.equal(restored.current(session,'/project').text,'Run local tests only. Never use the network.');
+  session.surface.nodes=session.surface.nodes.filter(seq=>seq!==later.seq);
+  assert.equal((await gate({...exec},allow)).kind,'deny');assert.equal(workspace.lastReview.failureCode,'REVIEW_SCOPE_STALE');assert.equal(requests.length,2);
+ }finally{await h.dispose();await workspace.dispose();}
+}));
+
+test('oversized exact arguments receive an operation-specific error before any model request',()=>temporary(async root=>{
+ const workspace=new Workspace(root);await workspace.load();const session=sessionFixture(),cmd='A'.repeat(64500);
+ const log=session.snapshotEvents().find(row=>row.type==='tool/call');log.data.arguments=JSON.stringify({cmd});
+ let submitted=0;const h=harness({tools:{guard(){}},workingDirectory:{ensure:async()=>'/project'},llm:{stream(){submitted++;return response({decision:'allow',risk:'low',reason:'unreachable'});}}});
+ wireGuard(h.ctx,workspace);
+ try{
+  const gate=h.events.get('tools/pre-execute');
+  const result=await gate({agent:{session},name:'shell',arguments:{cmd},callId:'call',rootCallId:'call'},async()=>({kind:'allow'}));
+  assert.equal(result.kind,'deny');assert.equal(workspace.lastReview.failureCode,'REVIEW_OPERATION_BUDGET');assert.equal(submitted,0);
  }finally{await h.dispose();await workspace.dispose();}
 }));
