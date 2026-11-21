@@ -156,7 +156,7 @@ test('team scope confirmation replaces only the selected child history; later pa
  f.guardian.reviewScopeFor=(...args)=>scopes.current(...args);
  await assert.rejects(f.guardian.review(f.exec('child')),/暂停/);assert.equal(f.calls.length,0);
  assert.equal(f.guardian.view('main').last.failureCode,'TEAM_AUTHORITY_BUDGET');
- await scopes.confirm('child','Read only the guide.',scopes.preview('child').token);
+ await scopes.confirm('child','Read only the guide.',(await scopes.preview('child')).token);
  const newer={seq:3,type:'user/message',data:{source:{kind:'user',rpcId:'parent-new'},content:[{type:'text',text:'Do not send results off the local machine.'}]}};
  main.snapshotEvents().push(newer);main.surface.nodes.push(newer.seq);
  await f.guardian.resume('main',f.guardian.state.revision);

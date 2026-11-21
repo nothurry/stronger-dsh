@@ -1,4 +1,4 @@
-# Release 0.19.41: scoped authorization for long review histories.
+# Release 0.19.42: open the selected child review scope.
 name: Publish audited release
 on:
   workflow_dispatch:

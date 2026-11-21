@@ -5,6 +5,10 @@ import {createUserMessage} from '@deepseek-ai/dsh-llm';
 import {compactedNodes} from '../lib/compaction-lineage.js';
 import {reviewSnapshot,REVIEW_POLICY} from '../lib/guard.js';
 import {Workspace} from '../lib/workspace.js';
+import {ReviewScopes} from '../lib/review-scope.js';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
 
 function fixture(){
  const s=Session.create('long-session');
@@ -20,6 +24,21 @@ function fixture(){
  const snapshot=(events=s.snapshotEvents(),nodes=s.surface.nodes)=>reviewSnapshot({name:'shell',rootCallId:'call',arguments:{cmd:'npm test'},agent:{session:{id:s.id,surface:{nodes},snapshotEvents:()=>[...events,{seq:events.length+1,type:'tool/call',data:{name:'shell',callId:'call',arguments:{cmd:'npm test'}}}],requestHeader:()=>({config:{provider:'p',model:'m'},tools:[{name:'shell',description:'Run command',parameters:{type:'object'}}]})}}},'/workspace');
  return {s,human,append,compact,snapshot};
 }
+
+test('an idle embedded child opens and confirms using the native prepared session without starting an agent',async()=>{
+ const dir=await mkdtemp(path.join(tmpdir(),'prepared-review-'));
+ try{
+  const {s,human,compact}=fixture();s.header={...s.header,origin:'subagent',parentSession:'main',cwd:dir};
+  human('Keep work in this directory. Do not publish.');compact();human('Run the local tests.');
+  let reads=0;const live=new Map(),services={sessions:live,agents:new Map(),sessionQuery:{async inspectSession(id,read){assert.equal(id,s.id);reads++;return read(s);}}};
+  const scopes=new ReviewScopes(dir,{get:name=>services[name]});await scopes.load();
+  const preview=await scopes.preview(s.id);assert.equal(preview.kind,'child');assert.equal(preview.sessionId,s.id);assert.equal(preview.priorMessages,2);
+  const saved=await scopes.confirm(s.id,'Run local tests only. Do not publish.',preview.token);
+  assert.equal(saved.sessionId,s.id);assert.equal(reads,3);assert.equal(live.size,0);
+  live.set(s.id,s);assert.equal(scopes.current(s,dir).text,'Run local tests only. Do not publish.');
+  await assert.rejects(scopes.confirm(s.id,'Run the tests.',preview.token),/已改变/);
+ }finally{await rm(dir,{recursive:true,force:true});}
+});
 
 test('repeated native surface replacements retain exact scoped restrictions without forwarding long tool and reference history',()=>{
  const {s,human,append,compact,snapshot}=fixture(),first=human('Keep traffic offline and only write within the workspace.');

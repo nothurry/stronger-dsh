@@ -24,9 +24,9 @@ test('safety context follows the selected child and returns to the coordinator',
  let selected='a',index=0;const observed=[];
  const qa=await client({...React,useState:initial=>[index++===3?selected:initial,()=>{}],useEffect:callback=>callback()});
  const data={sessionId:'main',requested:true,coordinator:{name:'Main'},defaults:{},members:[{id:'a',name:'A',enabled:true},{id:'b',name:'B',enabled:true}],timeline:{tasks:[{profile:{id:'a'},childId:'child-a',status:'completed',done:true},{profile:{id:'b'},childId:'child-b',status:'running',done:false}],summary:{}},messages:[]};
- const store={session:id=>observed.push(id)};
+ const store={session:()=>assert.fail('Team selection must not overwrite the native parent'),teamSelection:target=>{observed.push(target?.sessionId??null);return()=>{};}};
  for(const value of ['a','b',null]){selected=value;index=0;qa.TeamWorkspace({data,store});}
- assert.deepEqual(observed,['child-a','child-b','main']);
+ assert.deepEqual(observed,['child-a','child-b',null]);
 });
 
 test('focused member editor preserves other members and exposes the chosen name field',async()=>{

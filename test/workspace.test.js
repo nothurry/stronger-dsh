@@ -256,10 +256,10 @@ test('same-session confirmation restores bounded review after accumulated author
  try{
   const gate=h.events.get('tools/pre-execute'),allow=async()=>({kind:'allow'});
   assert.equal((await gate(exec,allow)).kind,'deny');assert.equal(workspace.lastReview.failureCode,'REVIEW_AUTHORITY_BUDGET');
-  const stale=scopes.preview(session.id);
+  const stale=await scopes.preview(session.id);
   const later={seq:3,type:'user/message',data:{source:{kind:'user',rpcId:'late'},content:[{type:'text',text:'Never use the network.'}]}};
   calls.push(later);session.surface.nodes.push(later.seq);await assert.rejects(scopes.confirm(session.id,'Run local tests only.',stale.token),/已改变/);
-  await scopes.confirm(session.id,'Run local tests only. Never use the network.',scopes.preview(session.id).token);
+  await scopes.confirm(session.id,'Run local tests only. Never use the network.',(await scopes.preview(session.id)).token);
   assert.equal(requests.length,0);
   const event={seq:4,type:'user/message',data:{source:{kind:'user',rpcId:'new'},content:[{type:'text',text:'Do not modify files.'}]}};
   calls.push(event);session.surface.nodes.push(event.seq);
